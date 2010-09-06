@@ -1,0 +1,118 @@
+object frmMain: TfrmMain
+  Left = 441
+  Height = 297
+  Top = 204
+  Width = 240
+  ActiveControl = edtYID
+  Caption = 'ymsgpas'
+  ClientHeight = 270
+  ClientWidth = 240
+  Menu = MainMenu1
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
+  Position = poScreenCenter
+  LCLVersion = '0.9.26.2'
+  object StatusBar1: TStatusBar
+    Height = 21
+    Top = 249
+    Width = 240
+    Panels = <>
+  end
+  object Notebook1: TNotebook
+    Height = 249
+    Width = 240
+    Align = alClient
+    PageIndex = 0
+    ShowTabs = False
+    TabOrder = 1
+    object Page1: TPage
+      Caption = 'Page1'
+      ClientWidth = 236
+      ClientHeight = 245
+      object GroupBox1: TGroupBox
+        Left = 14
+        Height = 176
+        Top = 22
+        Width = 211
+        Anchors = []
+        Caption = 'Yahoo! account'
+        ClientHeight = 157
+        ClientWidth = 207
+        TabOrder = 0
+        object Label1: TLabel
+          Left = 14
+          Height = 18
+          Top = 15
+          Width = 74
+          Caption = 'Y&ahoo! ID'
+          FocusControl = edtYID
+          ParentColor = False
+        end
+        object Label2: TLabel
+          Left = 14
+          Height = 18
+          Top = 63
+          Width = 72
+          Caption = '&Password'
+          FocusControl = edtPWD
+          ParentColor = False
+        end
+        object edtYID: TEdit
+          Left = 14
+          Height = 23
+          Top = 31
+          Width = 176
+          TabOrder = 0
+        end
+        object edtPWD: TEdit
+          Left = 14
+          Height = 23
+          Top = 79
+          Width = 176
+          EchoMode = emPassword
+          PasswordChar = '*'
+          TabOrder = 1
+        end
+        object btnLogin: TButton
+          Left = 62
+          Height = 25
+          Top = 119
+          Width = 75
+          Caption = '&LOGIN'
+          OnClick = btnLoginClick
+          TabOrder = 2
+        end
+      end
+    end
+    object Page2: TPage
+      Caption = 'Page2'
+      ClientWidth = 236
+      ClientHeight = 218
+      object TreeBuddies: TTreeView
+        Height = 218
+        Width = 236
+        Align = alClient
+        DefaultItemHeight = 19
+        TabOrder = 0
+      end
+    end
+  end
+  object MainMenu1: TMainMenu
+    left = 144
+    top = 208
+    object MenuItem1: TMenuItem
+      Caption = '&YMsgPas'
+      object MenuItem2: TMenuItem
+        Caption = '&Login'
+        OnClick = btnLoginClick
+      end
+      object MenuItem3: TMenuItem
+        Caption = '-'
+      end
+      object MenuItem4: TMenuItem
+        Caption = 'E&xit'
+        OnClick = MenuItem4Click
+      end
+    end
+  end
+end
