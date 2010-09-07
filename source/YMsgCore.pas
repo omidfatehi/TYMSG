@@ -694,33 +694,52 @@ begin
   end;
 end;
 
-procedure TYMSG.DoReceiveMessage(ADataPacket: TYMsgPacket);
-var
-  i, x: Integer;
-  txt: String;
-  bud: TYBuddy;
-begin
-  if Assigned(FOnReceiveIMessage) then
-  with ADataPacket do begin
-    if
-      (Header.Status = YAHOO_MESSAGE_UNKNOWN) or
-      (Header.Status = YAHOO_MESSAGE_AWAY)
-    then Exit;
+procedure TYMSG.DoReceiveMessage(ADataPacket: TYMsgPacket); 
+var 
+  i,k:integer; 
+  v,aFrom,aTo,aMsg, 
+  aSeq,aSend:string; 
+  bud: TYBuddy; 
+begin 
+  if Assigned(FOnReceiveIMessage) then 
+  with ADataPacket do begin 
+    for i:=0 to DataCount-1 do begin 
+      k := Datas[i].Key; 
+      v := Datas[i].Value; 
+      case k of 
+        4: aFrom := v; 
+        5: aTo := v; 
+        15: ; // 
+        206: ; // buddy icon 
+        97:  ; // utf8 
+        14,16: aMsg := UTF8Decode(v); 
+        31: ; // 
+        32: ; // 
+        241: ; // protocol 
+        429: aSeq := v; // message sequence 
+        450: aSend := v; // attempt 
+      end; // case 
+    end; // for 
 
-    if
-      (IndexOf(4) >= 0) and
-      (IndexOf(14) >= 0)
-    then
-    repeat
-      i := IndexOf(14);
-      bud := nil;
-      txt := UTF8Decode(Datas[i].Value);
-      if (FBuddies.FindYID(Datas[IndexOf(4)].Value, bud)) then
-        FOnReceiveIMessage(Self, bud, Datas[IndexOf(4)].Value, txt, Header.Status = YAHOO_MESSAGE_OFFLINE) else
-        FOnReceiveIMessage(Self, nil, Datas[IndexOf(4)].Value, txt, Header.Status = YAHOO_MESSAGE_OFFLINE);
-      for x := i downto 0 do Delete(x);
-    until (IndexOf(14) < 0);
-  end;
+    bud := nil; 
+    if (FBuddies.FindYID(Datas[IndexOf(4)].Value, bud)) then 
+      FOnReceiveIMessage(Self, bud, Datas[IndexOf(4)].Value, aMsg, Header.Status = YAHOO_MESSAGE_OFFLINE) else 
+      FOnReceiveIMessage(Self, nil, Datas[IndexOf(4)].Value, aMsg, Header.Status = YAHOO_MESSAGE_OFFLINE); 
+
+    // send_im_ack 
+    with FPSend do begin 
+      Header.Service := YAHOO_SERVICE_Y9_MESSAGE_ACK; 
+      Header.Status := YAHOO_STATUS_AVAILABLE; 
+      Clear; 
+      Add(1,FYID); 
+      Add(5,aFrom); 
+      Add(302,'430'); 
+      Add(430, aSeq); 
+      Add(303, '430'); 
+      Add(450, aSend); 
+    end; 
+    SendPacket(FPSend); 
+  end; 
 end;
 
 procedure TYMSG.DoAddBuddy(ADataPacket: TYMsgPacket);
