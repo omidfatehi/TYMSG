@@ -4,8 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Controls, Forms, StdCtrls,
-  ComCtrls, ExtCtrls, Menus,
-  YMsgCore, YBuddyList, YMsgConst;
+  ComCtrls, ExtCtrls, Menus, YMsgCore, YBuddyList, YMsgConst;
 
 type
   TfrmMain = class(TForm)
@@ -39,7 +38,8 @@ type
     procedure OnBuddyStatusUpdate(Sender:TObject;Buddy:TYBuddy);
     procedure OnBuddySignedOut(Sender:TObject;Buddy:TYBuddy);
     procedure OnReceiveMessage(Sender: TObject; From: TYBuddy;
-        BuddyID, MsgTxt: String; IsOffline: Boolean);
+        BuddyID, MsgTxt: String; DateTime: TDateTime;MsgStatus:TYMessageStatus);
+
 
     procedure CreateFormChat(YID:string;ChatMessage:string);
   public
@@ -51,7 +51,7 @@ var
 
 implementation
 
-uses uchat, uMsg, PageExtControl;
+uses uchat, uMsg, PageExtControl, DateUtils;
 
 {$R *.dfm}
 
@@ -69,7 +69,7 @@ begin
   ym.OnStatus := OnStatus;
   ym.OnBuddyStatusUpdate := OnBuddyStatusUpdate;
   ym.OnBuddySignedOut := OnBuddySignedOut;
-  ym.OnReceiveIMessage := OnReceiveMessage;
+  ym.OnReceiveMessage := OnReceiveMessage;
   ym.OnBuddyList:= OnBuddyList;
 
   for i:=0 to PageControl1.PageCount-1 do
@@ -115,9 +115,15 @@ begin
 end;
 
 procedure TfrmMain.OnReceiveMessage(Sender: TObject; From: TYBuddy;
-  BuddyID, MsgTxt: String; IsOffline: Boolean);
+  BuddyID, MsgTxt: String; DateTime: TDateTime; MsgStatus: TYMessageStatus);
+var s: string;
 begin
-  CreateFormChat(BuddyID,MsgTxt);
+  case MsgStatus of
+    ymNormal: s := 'OK';
+    ymError: s := 'Error sending message';
+    ymOffline: s := 'Offline message';
+  end;
+  CreateFormChat(BuddyID,'Status: '+ s + ', waktu: '+ DateTimeToStr(DateTime) + ' => ' + MsgTxt);
 end;
 
 procedure TfrmMain.OnStatus(Sender: TObject; Status: TYMsgCoreState);

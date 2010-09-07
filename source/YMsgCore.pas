@@ -17,15 +17,18 @@ unit YMsgCore;
 interface
 
 uses
-  SysUtils, Classes, ExtCtrls, httpsynapse,
+  Windows, SysUtils, Classes, ExtCtrls, httpsynapse,
   YMsgSock, YMsgConst, YMsgPckt, YBuddyList;
 
 type
   TYMSGStatusEvent = type TTCPEvent;
   TOnBuddyStatusUpdate = procedure(Sender: TObject; Buddy: TYBuddy) of object;
   TOnBuddySignedOut = procedure(Sender: TObject; Buddy: TYBuddy) of object;
-  TOnInstantMessage = procedure(Sender: TObject; From: TYBuddy;
-      BuddyID, MsgTxt: String; IsOffline: Boolean) of object;
+
+  TOnBuzz = procedure(Sender: TObject; From: string; DateTime: TDateTime) of object;
+  TOnReceiveMessage = procedure(Sender: TObject; From: TYBuddy;
+      BuddyID, MsgTxt: String; DateTime: TDateTime; MsgStatus: TYMessageStatus) of object;
+
   TOnAddRequest = procedure(Sender: TObject; From: String; var MsgTxt: String;
       var Accept: Boolean) of object;
   TOnNewEmail = procedure(Sender: TObject; EmailCount: Integer) of object;
@@ -55,13 +58,14 @@ type
     FBuddies:TYBuddyGroupList;
     FOnBuddyStatusUpdate: TOnBuddyStatusUpdate;
     FOnBuddySignedOut:TOnBuddySignedOut;
-    FOnReceiveIMessage: TOnInstantMessage;
+    FOnReceiveMessage: TOnReceiveMessage;
     FOnAddRequest: TOnAddRequest;
     FOnNewEmail: TOnNewEmail;
     FOnBuddyPicture: TOnBuddyPicture;
     FOnDataPacketParsed: TOnDataPacketParsed;
     FOnBuddyList: TOnBuddyList;
     FOnTyping: TOnBuddyTyping;
+    FOnBuzz: TOnBuzz;
 
     procedure SockError(Sender:TObject;Value:string);
     procedure SockConnected(Sender:TObject);
@@ -79,7 +83,7 @@ type
     procedure DoInitAuthentication(ADataPacket: TYMsgPacket);
     procedure DoInitLogin(ADataPacket: TYMsgPacket);
     procedure DoParseList(ADataPacket: TYMsgPacket);
-    procedure DoStatusY7(ADataPacket: TYMsgPacket);
+    procedure DoStatusY8(ADataPacket: TYMsgPacket);
     procedure DoLogOff(ADataPacket:TYMsgPacket);
     procedure DoReceiveMessage(ADataPacket:TYMsgPacket);
     procedure DoAddBuddy(ADataPacket: TYMsgPacket);
@@ -120,12 +124,14 @@ type
     property OnError: TYMSGStatusEvent read FOnError write FOnError;
     property OnBuddyStatusUpdate: TOnBuddyStatusUpdate read FOnBuddyStatusUpdate write FOnBuddyStatusUpdate;
     property OnBuddySignedOut:  TOnBuddySignedOut read FOnBuddySignedOut write FOnBuddySignedOut;
-    property OnReceiveIMessage: TOnInstantMessage read FOnReceiveIMessage write FOnReceiveIMessage;
+    property OnReceiveMessage: TOnReceiveMessage read FOnReceiveMessage write FOnReceiveMessage;
     property OnAddRequest: TOnAddRequest read FOnAddRequest write FOnAddRequest;
     property OnNewEmail: TOnNewEmail read FOnNewEmail write FOnNewEmail;
     property OnDataPacketParsed: TOnDataPacketParsed read FOnDataPacketParsed write FOnDataPacketParsed;
     property OnBuddyList: TOnBuddyList read FOnBuddyList write FOnBuddyList;
     property OnBuddyTyping: TOnBuddyTyping read FOnTyping write FOnTyping;
+    property OnBuzz: TOnBuzz read FOnBuzz write FOnBuzz;
+    property OnBuddyPicture: TOnBuddyPicture read FOnBuddyPicture write FOnBuddyPicture;
   end;
 
 {$IFDEF KOMPONEN}
@@ -149,6 +155,22 @@ begin
   Result := ReplaceString(Result,'+','.');
   Result := ReplaceString(Result,'/','_');
   Result := ReplaceString(Result,'=','-');
+end;
+
+function UnixToDateTime(USec: Longint): TDateTime;
+const
+  // Sets UnixStartDate to TDateTime of 01/01/1970
+  UnixStartDate: TDateTime = 25569;
+begin
+  Result := (Usec / 86400) + UnixStartDate;
+end;
+
+function GMTToLocalTime(GMTTime: TDateTime): TDateTime;
+var GMTST,LocalST: TSystemTime;
+begin
+  DateTimeToSystemTime(GMTTime, GMTST);
+  SystemTimeToTzSpecificLocalTime(nil, GMTST, LocalST);
+  Result := SystemTimeToDateTime(LocalST);
 end;
 
 { TYMSG }
@@ -279,7 +301,7 @@ begin
     Exit;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_LOGOFF;
-    Header.Status := YAHOO_STATUS_AVAILABLE;
+    Header.Status := YPACKET_STATUS_DEFAULT;
     Clear;
   end;
   SendPacket(FPSend);
@@ -336,7 +358,7 @@ begin
   p := TYMsgPacket.Create;
   try
     p.Assign(DataPacket);
-    //if Assigned(FOnDataParse) then
+    //if Assigned(OnDataParse) then
       //FOnDataParse(Self, p, parsed);
     if (not parsed) then begin
       case DataPacket.Header.Service of
@@ -344,14 +366,14 @@ begin
         YAHOO_SERVICE_AUTH: DoInitLogin(DataPacket);
         YAHOO_SERVICE_AUTHRESP: DoInitLogin(DataPacket);
         YAHOO_SERVICE_LIST: DoStatus(ymsSignedIn);
-        YAHOO_SERVICE_Y7LIST: DoParseList(DataPacket);
-        YAHOO_SERVICE_LOGON,YAHOO_SERVICE_Y7LOGON: DoStatusY7(DataPacket);
+        YAHOO_SERVICE_Y8_LIST: DoParseList(DataPacket);
+        YAHOO_SERVICE_LOGON,YAHOO_SERVICE_Y8_STATUS: DoStatusY8(DataPacket);
         YAHOO_SERVICE_LOGOFF: DoLogOff(DataPacket);
         YAHOO_SERVICE_MESSAGE: DoReceiveMessage(DataPacket);
         YAHOO_SERVICE_ADDBUDDY: DoAddBuddy(DataPacket);
         YAHOO_SERVICE_REMBUDDY: DoRemBuddy(DataPacket);
         YAHOO_SERVICE_NEWMAIL: DoNewEmail(DataPacket);
-        YAHOO_SERVICE_Y7BUDDYAUTH: DoAddRequest(DataPacket);
+        YAHOO_SERVICE_Y7_AUTHORIZATION: DoAddRequest(DataPacket);
 	      YAHOO_SERVICE_USERSTAT,
 	      //YAHOO_SERVICE_LOGOFF,
 	      YAHOO_SERVICE_ISAWAY,
@@ -360,14 +382,14 @@ begin
 	      YAHOO_SERVICE_GAMELOGOFF,
 	      YAHOO_SERVICE_IDACT,
 	      YAHOO_SERVICE_IDDEACT,
-	      YAHOO_SERVICE_Y6STATUS: DoProcessStatus(DataPacket);
+	      YAHOO_SERVICE_Y6_STATUS_UPDATE: DoProcessStatus(DataPacket);
 
         YAHOO_SERVICE_NOTIFY: DoProcessNotify(DataPacket);
 
         YAHOO_SERVICE_PICTURE: DoPicture(DataPacket);
 
       end;
-      if Assigned(FOnDataPacketParsed) then
+      if Assigned(OnDataPacketParsed) then
         FOnDataPacketParsed(Self, DataPacket);
     end;
   finally
@@ -606,7 +628,7 @@ begin
      }
 end;
 
-procedure TYMSG.DoStatusY7(ADataPacket: TYMsgPacket);
+procedure TYMSG.DoStatusY8(ADataPacket: TYMsgPacket);
 var i,k:integer;
     v:string;
     budd,last:TYBuddy;
@@ -667,7 +689,7 @@ begin
     end; // else unknown status
   end;
   if (last <> budd) and (budd <> nil) then
-    if Assigned(FOnBuddyStatusUpdate) then
+    if Assigned(OnBuddyStatusUpdate) then
       FOnBuddyStatusUpdate(Self, budd);
 end;
 
@@ -675,7 +697,7 @@ procedure TYMSG.DoLogOff(ADataPacket: TYMsgPacket);
 var
   bud: TYBuddy;
 begin
-  if Assigned(FOnBuddySignedOut) then
+  if Assigned(OnBuddySignedOut) then
   with ADataPacket do begin
     if (ADataPacket = nil) then begin
       FOnBuddySignedOut(Self, nil);
@@ -694,52 +716,78 @@ begin
   end;
 end;
 
-procedure TYMSG.DoReceiveMessage(ADataPacket: TYMsgPacket); 
+procedure TYMSG.DoReceiveMessage(ADataPacket: TYMsgPacket);
 var 
-  i,k:integer; 
-  v,aFrom,aTo,aMsg, 
-  aSeq,aSend:string; 
-  bud: TYBuddy; 
-begin 
-  if Assigned(FOnReceiveIMessage) then 
-  with ADataPacket do begin 
-    for i:=0 to DataCount-1 do begin 
-      k := Datas[i].Key; 
-      v := Datas[i].Value; 
-      case k of 
-        4: aFrom := v; 
-        5: aTo := v; 
-        15: ; // 
-        206: ; // buddy icon 
-        97:  ; // utf8 
-        14,16: aMsg := UTF8Decode(v); 
-        31: ; // 
-        32: ; // 
-        241: ; // protocol 
-        429: aSeq := v; // message sequence 
-        450: aSend := v; // attempt 
-      end; // case 
-    end; // for 
+  i,k:integer;
+  tm: LongInt; 
+  v,aFrom,aTo,aMsg,
+  aGunk: string;
+  bud: TYBuddy;
+  d: TDateTime;
+begin
 
-    bud := nil; 
-    if (FBuddies.FindYID(Datas[IndexOf(4)].Value, bud)) then 
-      FOnReceiveIMessage(Self, bud, Datas[IndexOf(4)].Value, aMsg, Header.Status = YAHOO_MESSAGE_OFFLINE) else 
-      FOnReceiveIMessage(Self, nil, Datas[IndexOf(4)].Value, aMsg, Header.Status = YAHOO_MESSAGE_OFFLINE); 
+  with ADataPacket do begin
+    for i:=0 to DataCount-1 do begin
+      k := Datas[i].Key;
+      v := Datas[i].Value;
+      case k of
+        4: aFrom := v;
+        5: aTo := v;
+        15: TryStrToInt(v, tm);  // message timestamp
+        97:  ; // whether the message is encoded as utf8 or not
+        14,16: aMsg := UTF8Decode(v);
+        31: ; //
+        32: ; //
+        241: ; // protocol
+        429: aGunk := v;
+      end; // case
+    end; // for
 
-    // send_im_ack 
-    with FPSend do begin 
-      Header.Service := YAHOO_SERVICE_Y9_MESSAGE_ACK; 
-      Header.Status := YAHOO_STATUS_AVAILABLE; 
-      Clear; 
-      Add(1,FYID); 
-      Add(5,aFrom); 
-      Add(302,'430'); 
-      Add(430, aSeq); 
-      Add(303, '430'); 
-      Add(450, aSend); 
-    end; 
-    SendPacket(FPSend); 
-  end; 
+    if (Header.Service = YAHOO_SERVICE_SYSMESSAGE) then
+    begin
+      if Assigned(OnReceiveMessage) then
+        FOnReceiveMessage(Self, nil, aFrom, aMsg, d, ymNormal)
+    end else begin
+      if (Header.Status <= 2 ) or (Header.Status = 5) then
+      begin
+      // if we got the aGunk
+        if (aGunk <> '') then begin
+          with FPSend do begin
+            Header.Service := YAHOO_SERVICE_MESSAGE_CONFIRM;
+            Header.Status := YPACKET_STATUS_DEFAULT;
+            Clear;
+            Add(1, FYID);
+            Add(5, aFrom);
+            Add(302, '430');
+            Add(430, aGunk);
+            Add(303, '430');
+            Add(450, '0');
+          end;
+          SendPacket(FPSend);
+        end;
+
+        d := GMTToLocalTime(UnixToDateTime(tm));
+
+        bud := nil;
+        // if we got buzz
+        if (aMsg = '<ding>') then begin
+          if Assigned(OnBuzz) then begin
+              FOnBuzz(Self, aFrom, d);
+          end;
+        end else
+        begin
+          if Assigned(OnReceiveMessage) then begin
+            if (FBuddies.FindYID(aFrom, bud)) then
+              FOnReceiveMessage(Self, bud, aFrom, aMsg, d, TYMessageStatus(Header.Status))
+          else
+              FOnReceiveMessage(Self, nil, aFrom, aMsg, d, TYMessageStatus(Header.Status));
+          end;
+        end;
+
+      end; // status <= 2 || status == 5
+      
+    end;
+  end; // ADataPacket
 end;
 
 procedure TYMSG.DoAddBuddy(ADataPacket: TYMsgPacket);
@@ -777,14 +825,14 @@ begin
         msg := Datas[IndexOf(14)].Value;
         tmp := msg;
 
-      if Assigned(FOnAddRequest) then
+      if Assigned(OnAddRequest) then
         FOnAddRequest(Self, from, msg, accpet);
 
       pckt := TYMsgPacket.Create;
       with pckt do
       try
-        Header.Service := YAHOO_SERVICE_Y7BUDDYAUTH;
-        Header.Status := YAHOO_STATUS_AVAILABLE;
+        Header.Service := YAHOO_SERVICE_Y7_AUTHORIZATION;
+        Header.Status := YPACKET_STATUS_DEFAULT;
         Add(1, FYID);
         Add(5, from);
         if (accpet) then
@@ -810,7 +858,7 @@ begin
    42 = email
    43 = who
   }
-  if Assigned(FOnNewEmail) then
+  if Assigned(OnNewEmail) then
   with ADataPacket do begin
     idx := IndexOf(9);
     cnt := StrToIntDef(Datas[ idx ].Value, 0);
@@ -826,7 +874,7 @@ var
   pic: String;
   bud: TYBuddy;
 begin
-  if Assigned(FOnBuddyPicture) then
+  if Assigned(OnBuddyPicture) then
   with ADataPacket do begin
     if
       (IndexOf(4) < 0) or
@@ -838,7 +886,7 @@ begin
         (IndexOf(13) < 0)
       then begin
         FPSend.Header.Service := YAHOO_SERVICE_PICTURE;
-        FPSend.Header.Status := YAHOO_STATUS_AVAILABLE;
+        FPSend.Header.Status := YPACKET_STATUS_DEFAULT;
         FPSend.Clear;
         FPSend.Add(1, FYID);
         FPSend.Add(5, Datas[IndexOf(4)].Value);
@@ -885,7 +933,7 @@ begin
   pckt := TYMsgPacket.Create;
   try
     pckt.Header.Service := YAHOO_SERVICE_PING;
-    pckt.Header.Status := YAHOO_STATUS_AVAILABLE;
+    pckt.Header.Status := YPACKET_STATUS_DEFAULT;
     SendPacket(pckt);
   finally
     pckt.Free;
@@ -899,7 +947,7 @@ begin
     Exit;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_ADDBUDDY;
-    Header.Status := YAHOO_STATUS_AVAILABLE;
+    Header.Status := YPACKET_STATUS_DEFAULT;
     Clear;
     if (Length(Trim(RequestMessage)) > 0) then
       Add(14, RequestMessage);
@@ -921,7 +969,7 @@ begin
     Exit;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_REMBUDDY;
-    Header.Status := YAHOO_STATUS_AVAILABLE;
+    Header.Status := YPACKET_STATUS_DEFAULT;
     Clear;
     Add(1, FYID);
     Add(7, ABuddy);
@@ -942,7 +990,7 @@ begin
     if (FBuddies.FindYID(ToUser, bud)) then begin
       if (bud.State = ysOffline) then
         Header.Status := YAHOO_STATUS_OFFLINE else
-        Header.Status := YAHOO_STATUS_AVAILABLE;
+        Header.Status := YPACKET_STATUS_DEFAULT;
     end else
       Header.Status := YAHOO_STATUS_WEBLOGIN;
     Clear;
@@ -964,7 +1012,7 @@ begin
     Exit;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_NOTIFY;
-    Header.Status := YAHOO_STATUS_TYPING;
+    Header.Status := YPACKET_STATUS_NOTIFY;
     Clear;
     Add(49, 'TYPING');
     Add(1, FYID);
@@ -981,10 +1029,12 @@ begin
   if (FState<>ymsSignedIn) then
     Exit;
   with FPSend do begin
+    if (AStatus = ysInvisible) then
+//      Header.Service = YAHOO_SERVICE_Y6STATUS
     Header.Service := YAHOO_SERVICE_ISAWAY;
     Header.Status := Integer(AStatus);
     Clear;
-    Add(10, IntToStr(Integer(AStatus)));
+    Add(3, IntToStr(Integer(AStatus)));
     if (AStatus = ysCustom) and (Length(CustomMsg) > 0) then begin
       Add(19, UTF8Encode(CustomMsg));
       Add(47, IntToStr(Integer(CustomBusy)));
@@ -999,7 +1049,7 @@ begin
     Exit;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_IGNORECONTACT;
-    Header.Status := YAHOO_STATUS_AVAILABLE;
+    Header.Status := YPACKET_STATUS_DEFAULT;
     Clear;
     Add(1, FYID);
     Add(7, ABuddyID);
@@ -1014,7 +1064,7 @@ begin
     Exit;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_IGNORECONTACT;
-    Header.Status := YAHOO_STATUS_AVAILABLE;
+    Header.Status := YPACKET_STATUS_DEFAULT;
     Clear;
     Add(1, FYID);
     Add(7, ABuddyID);
@@ -1024,31 +1074,34 @@ begin
 end;
 
 procedure TYMSG.DoProcessNotify(ADataPacket: TYMsgPacket);
-var
-  i,k:integer;
-  v,aFrom,aTo,aMsg,aInd:string;
-  stat: Boolean;
-  pair:TYMsgPacketData;
-begin
-  with ADataPacket do begin
-    if (IndexOf(16)>0) or
-      (Datas[IndexOf(49)].Value='') then
-      Exit;
-    
-    aFrom := Datas[IndexOf(4)].Value;
-    aTo   := Datas[IndexOf(5)].Value;
-    aMsg  := Datas[IndexOf(49)].Value;
-    stat  := StrToBoolDef(Datas[13].Value,False);    
-    aInd  := Datas[IndexOf(14)].Value;
-  end;
+var 
+  i,k:integer; 
+  v,aFrom,aTo,aMsg,aInd:string; 
+  stat: Boolean; 
+begin 
+  with ADataPacket do begin 
+    for i:=0 to DataCount-1 do begin 
+      k := Datas[i].Key; 
+      v := Datas[i].Value; 
+      case k of 
+        4: aFrom := v; 
+        5: aTo := v; 
+        49: aMsg := v; 
+        13: stat := StrToBoolDef(v,True); 
+        14: aInd := v; // TODO 
+        16: ; // TODO 
+      end; 
+    end; 
+  end; 
+  
+  // recheck 
+  if (aMsg='') then Exit; 
 
-  // recheck
-  if (aMsg='') then Exit;
-
-  if Pos('TYPING',aMsg)>0 then begin
-    if Assigned(OnBuddyTyping) then
-      FOnTyping(Self, aFrom, stat);
-  end;// else GAME, WEBCAMINVITE
+  stat := false;
+  if Pos('TYPING',aMsg)>0 then begin 
+    if Assigned(OnBuddyTyping) then 
+      FOnTyping(Self, aFrom, stat); 
+  end;// else GAME, WEBCAMINVITE 
 end;
 
 
