@@ -1,3 +1,5 @@
 It's a modified version from http://sourceforge.net/projects/tymsgcore/ 
 
-Last update: September 15, 2009
+Note: 
+	- SSL required !
+	- for Win32 users, grab openssl form http://www.slproweb.com/products/Win32OpenSSL.html
