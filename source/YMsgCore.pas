@@ -17,7 +17,7 @@ unit YMsgCore;
 interface
 
 uses
-  Windows, SysUtils, Classes, ExtCtrls, httpsynapse,
+  SysUtils, Classes, ExtCtrls, httpsynapse,
   YMsgSock, YMsgConst, YMsgPckt, YBuddyList;
 
 type
@@ -166,11 +166,10 @@ begin
 end;
 
 function GMTToLocalTime(GMTTime: TDateTime): TDateTime;
-var GMTST,LocalST: TSystemTime;
+var s:string;
 begin
-  DateTimeToSystemTime(GMTTime, GMTST);
-  SystemTimeToTzSpecificLocalTime(nil, GMTST, LocalST);
-  Result := SystemTimeToDateTime(LocalST);
+  s := FormatDateTime('d mmm yy hh:mm:ss', d) + ' GMT';	
+  Result := DecodeRfcDateTime(s);
 end;
 
 { TYMSG }
