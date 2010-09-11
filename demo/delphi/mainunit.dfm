@@ -111,6 +111,14 @@ object frmMain: TfrmMain
         end
       end
     end
+    object Button1: TButton
+      Left = 136
+      Top = 24
+      Width = 75
+      Height = 25
+      Caption = 'Button1'
+      TabOrder = 1
+    end
   end
   object MainMenu1: TMainMenu
     Left = 80

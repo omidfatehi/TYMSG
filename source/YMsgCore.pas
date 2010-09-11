@@ -66,6 +66,8 @@ type
     FOnBuddyList: TOnBuddyList;
     FOnTyping: TOnBuddyTyping;
     FOnBuzz: TOnBuzz;
+    FStatus: TYStatus;
+    FInitialText:string;
 
     procedure SockError(Sender:TObject;Value:string);
     procedure SockConnected(Sender:TObject);
@@ -100,17 +102,18 @@ type
   public
     constructor Create{$IFDEF KOMPONEN}(AOwner: TComponent);override{$ENDIF};
     destructor Destroy;override;
-    procedure Login;
+    procedure Login(Status: TYStatus = ysAvailable; CustomText: string = '');
     procedure Logout;
 
     procedure AddBuddy(ABuddyID, AddToGroup: String; RequestMessage: String = '');
     procedure RemoveBuddy(ABuddy, AddToGroup: String);
     procedure SendInstantMessage(ToUser, AMessage: String);
-    procedure SendTyping(ToUser: String; Stop: Boolean = False);
-    procedure SetStatus(AStatus: TYStatus;
-      CustomMsg: String = ''; CustomBusy: Boolean = False);
+    procedure SendTyping(ToWho: String; Stop: Boolean = False);
+    procedure SetStatus(AStatus: TYStatus; CustomText: String = '');
     procedure IgnoreBuddy(ABuddyID:string);
     procedure UnignoreBuddy(ABuddyID:string);
+
+    procedure SendBuzz(ToWho: string);
 
     procedure SendPacket(ADataPacket: TYMsgPacket);
 
@@ -191,6 +194,9 @@ begin
   FPort := '5050';
 
   FState := ymsSignedOut;
+  FStatus := ysAvailable;
+  FInitialText := '';
+  
   FPSend := TYMsgPacket.Create;
   FPRecv := TYMsgPacket.Create;
   FBuddies := TYBuddyGroupList.Create(TYBuddyGroup);
@@ -281,11 +287,20 @@ begin
   DoError('HTTP Error: '+IntToStr(ErrorCode)+' '+ErrMsg);
 end;           
 
-procedure TYMSG.Login;
+procedure TYMSG.Login(Status: TYStatus = ysAvailable; CustomText: string = '');
 begin
   if sock.IsConnected or
     (FState<>ymsSignedOut) then
     Exit;
+
+  if (Status = ysOffline) then
+  begin
+    Logout;
+    Exit;
+  end;
+
+  FStatus := Status;
+  FInitialText := CustomText;
 
   DoStatus(ymsConnecting);
   sock.Host := FHost;
@@ -364,7 +379,7 @@ begin
         YAHOO_SERVICE_VERIFY: DoInitAuthentication(DataPacket);
         YAHOO_SERVICE_AUTH: DoInitLogin(DataPacket);
         YAHOO_SERVICE_AUTHRESP: DoInitLogin(DataPacket);
-        YAHOO_SERVICE_LIST: DoStatus(ymsSignedIn);
+        YAHOO_SERVICE_LIST: ;// identities + cookies //DoStatus(ymsSignedIn);
         YAHOO_SERVICE_Y8_LIST: DoParseList(DataPacket);
         YAHOO_SERVICE_LOGON,YAHOO_SERVICE_Y8_STATUS: DoStatusY8(DataPacket);
         YAHOO_SERVICE_LOGOFF: DoLogOff(DataPacket);
@@ -434,12 +449,11 @@ begin
     );
 
   end else begin
-    // is this work ?
     idx := YAHOO_LOGIN_SERVER;
     if (IndexOf(66) >= 0) then
       idx := StrToIntDef(Datas[IndexOf(66)].Value, 1);
     case idx of
-      YAHOO_LOGIN_OK: yid := 'Accout is OK';
+      YAHOO_LOGIN_OK: yid := 'Account is OK';
       YAHOO_LOGIN_SERVER: yid := 'Server Error';
       YAHOO_LOGIN_LOGOFF: yid := 'Account is Logoff';
       YAHOO_LOGIN_UNAME: yid := 'Invalid Username';
@@ -616,8 +630,15 @@ begin
 
   end;
 
+
+  if (FState <> ymsSignedIn) then begin
+    DoStatus(ymsSignedIn);
+    SetStatus(FStatus, FInitialText);
+  end;
+  
   if Assigned(OnBuddyList) then
-    FOnBuddyList(Self,FBuddies);
+    FOnBuddyList(Self,FBuddies);  
+
     {
   for i:=0 to FBuddies.Count-1 do begin
     DoError('+'+FBuddies.Groups[i].GroupName);
@@ -1005,7 +1026,7 @@ begin
 
 end;
 
-procedure TYMSG.SendTyping(ToUser: String; Stop: Boolean);
+procedure TYMSG.SendTyping(ToWho: String; Stop: Boolean);
 begin
   if (FState<>ymsSignedIn) then
     Exit;
@@ -1017,29 +1038,60 @@ begin
     Add(1, FYID);
     Add(14, ' ');
     Add(13, IntToStr(Integer((not Stop))));
-    Add(5, ToUser);                        
+    Add(5, ToWho);
   end;
   SendPacket(FPSend);
 end;
 
-procedure TYMSG.SetStatus(AStatus: TYStatus; CustomMsg: String;
-  CustomBusy: Boolean);
+procedure TYMSG.SetStatus(AStatus: TYStatus; CustomText: String = '');
+var oldstatus: TYStatus;
 begin
   if (FState<>ymsSignedIn) then
     Exit;
-  with FPSend do begin
-    if (AStatus = ysInvisible) then
-//      Header.Service = YAHOO_SERVICE_Y6STATUS
-    Header.Service := YAHOO_SERVICE_ISAWAY;
-    Header.Status := Integer(AStatus);
-    Clear;
-    Add(3, IntToStr(Integer(AStatus)));
-    if (AStatus = ysCustom) and (Length(CustomMsg) > 0) then begin
-      Add(19, UTF8Encode(CustomMsg));
-      Add(47, IntToStr(Integer(CustomBusy)));
+
+  oldstatus := FStatus;
+
+  if (CustomText <> '') then
+    FStatus := ysCustom;
+
+  if (FStatus = ysInvisible) then
+  begin
+    with FPSend do begin
+      Header.Service := YAHOO_SERVICE_Y6_VISIBLE_TOGGLE;
+      Header.Status := YAHOO_STATUS_AVAILABLE;
+      Clear;
+      Add(13, '2');
     end;
+    SendPacket(FPSend);
+    Exit;
   end;
+
+  with FPSend do begin
+    Header.Service := YAHOO_SERVICE_Y6_STATUS_UPDATE;
+    Header.Status := Integer(TYStatus(FStatus));
+    Clear;
+    Add(10, IntToStr(Integer(TYStatus(FStatus))));
+
+    if (FStatus = ysCustom) and (Length(CustomText)>0) then
+      Add(19, CustomText)
+    else
+      Add(19, '');
+
+    Add(47, '0'); // TODO: yahoo_packet_hash(pkt, 47, (away == 2) ? "2" : (away) ? "1" : "0");
+  end;
+
   SendPacket(FPSend);
+
+  if oldstatus = ysInvisible then begin
+    with FPSend do begin
+      Header.Service := YAHOO_SERVICE_Y6_VISIBLE_TOGGLE;
+      Header.Status := YAHOO_STATUS_AVAILABLE;
+      Clear;
+      Add(13, '1');
+    end;
+    SendPacket(FPSend);
+  end;
+
 end;
 
 procedure TYMSG.IgnoreBuddy(ABuddyID: string);
@@ -1077,7 +1129,8 @@ var
   i,k:integer; 
   v,aFrom,aTo,aMsg,aInd:string; 
   stat: Boolean; 
-begin 
+begin
+  stat := false;
   with ADataPacket do begin 
     for i:=0 to DataCount-1 do begin 
       k := Datas[i].Key; 
@@ -1096,7 +1149,6 @@ begin
   // recheck 
   if (aMsg='') then Exit; 
 
-  stat := false;
   if Pos('TYPING',aMsg)>0 then begin 
     if Assigned(OnBuddyTyping) then 
       FOnTyping(Self, aFrom, stat); 
@@ -1107,6 +1159,11 @@ end;
 procedure TYMSG.DoProcessStatus(ADataPacket: TYMsgPacket);
 begin
   // TODO 
+end;
+
+procedure TYMSG.SendBuzz(ToWho: string);
+begin
+  SendInstantMessage(ToWho, '<ding>');  
 end;
 
 end.

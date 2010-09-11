@@ -25,6 +25,7 @@ type
     Label2: TLabel;
     btnLogin: TButton;
     TreeBuddies: TTreeView;
+    Button1: TButton;
     procedure Exit1Click(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -50,7 +51,7 @@ var
 
 implementation
 
-uses uchat, uMsg, PageExtControl, DateUtils;
+uses uchat, uMsg, PageExtControl;
 
 {$R *.dfm}
 
@@ -162,7 +163,7 @@ begin
     Login1.Caption := '&Logout';
     ym.YahooID := edtYID.Text;
     ym.Password:= edtPWD.Text;
-    ym.Login;
+    ym.Login(ysCustom, 'test status');
   end else
   begin
     ym.Logout;
