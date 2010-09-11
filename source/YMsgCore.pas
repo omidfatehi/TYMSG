@@ -742,6 +742,8 @@ begin
       end; // case
     end; // for
 
+    d := GMTToLocalTime(UnixToDateTime(tm));
+    
     if (Header.Service = YAHOO_SERVICE_SYSMESSAGE) then
     begin
       if Assigned(OnReceiveMessage) then
@@ -764,8 +766,6 @@ begin
           end;
           SendPacket(FPSend);
         end;
-
-        d := GMTToLocalTime(UnixToDateTime(tm));
 
         bud := nil;
         // if we got buzz

@@ -1,6 +1,6 @@
 object frmMain: TfrmMain
-  Left = 350
-  Top = 191
+  Left = 308
+  Top = 140
   Width = 243
   Height = 314
   Caption = 'YMsgPas'
@@ -19,7 +19,7 @@ object frmMain: TfrmMain
   TextHeight = 13
   object StatusBar1: TStatusBar
     Left = 0
-    Top = 249
+    Top = 241
     Width = 235
     Height = 19
     Panels = <>
@@ -28,7 +28,7 @@ object frmMain: TfrmMain
     Left = 0
     Top = 0
     Width = 235
-    Height = 249
+    Height = 241
     Align = alClient
     BevelOuter = bvLowered
     TabOrder = 1
@@ -36,7 +36,7 @@ object frmMain: TfrmMain
       Left = 1
       Top = 1
       Width = 233
-      Height = 247
+      Height = 239
       ActivePage = TabSheet1
       Align = alClient
       Style = tsFlatButtons
@@ -45,7 +45,7 @@ object frmMain: TfrmMain
         Caption = 'TabSheet1'
         DesignSize = (
           225
-          216)
+          208)
         object GroupBox1: TGroupBox
           Left = 7
           Top = 15
@@ -103,7 +103,7 @@ object frmMain: TfrmMain
           Left = 0
           Top = 0
           Width = 225
-          Height = 216
+          Height = 208
           Align = alClient
           Indent = 19
           TabOrder = 0

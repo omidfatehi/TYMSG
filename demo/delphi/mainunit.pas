@@ -38,8 +38,7 @@ type
     procedure OnBuddyStatusUpdate(Sender:TObject;Buddy:TYBuddy);
     procedure OnBuddySignedOut(Sender:TObject;Buddy:TYBuddy);
     procedure OnReceiveMessage(Sender: TObject; From: TYBuddy;
-        BuddyID, MsgTxt: String; DateTime: TDateTime;MsgStatus:TYMessageStatus);
-
+        BuddyID, MsgTxt: String; TimeStamp: TDateTime; MsgStatus:TYMessageStatus);
 
     procedure CreateFormChat(YID:string;ChatMessage:string);
   public
@@ -115,7 +114,7 @@ begin
 end;
 
 procedure TfrmMain.OnReceiveMessage(Sender: TObject; From: TYBuddy;
-  BuddyID, MsgTxt: String; DateTime: TDateTime; MsgStatus: TYMessageStatus);
+  BuddyID, MsgTxt: String; TimeStamp: TDateTime; MsgStatus: TYMessageStatus);
 var s: string;
 begin
   case MsgStatus of
@@ -123,7 +122,7 @@ begin
     ymError: s := 'Error sending message';
     ymOffline: s := 'Offline message';
   end;
-  CreateFormChat(BuddyID,'Status: '+ s + ', waktu: '+ DateTimeToStr(DateTime) + ' => ' + MsgTxt);
+  CreateFormChat(BuddyID,'Status: '+ s + ', waktu: '+ DateTimeToStr(TimeStamp) + ' => ' + MsgTxt);
 end;
 
 procedure TfrmMain.OnStatus(Sender: TObject; Status: TYMsgCoreState);
