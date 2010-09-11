@@ -168,7 +168,7 @@ end;
 function GMTToLocalTime(GMTTime: TDateTime): TDateTime;
 var s:string;
 begin
-  s := FormatDateTime('d mmm yy hh:mm:ss', d) + ' GMT';	
+  s := FormatDateTime('d mmm yy hh:mm:ss', GMTTime) + ' GMT';	
   Result := DecodeRfcDateTime(s);
 end;
 
