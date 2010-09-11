@@ -1007,20 +1007,23 @@ begin
 
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_MESSAGE;
-    if (FBuddies.FindYID(ToUser, bud)) then begin
-      if (bud.State = ysOffline) then
-        Header.Status := YAHOO_STATUS_OFFLINE else
-        Header.Status := YPACKET_STATUS_DEFAULT;
-    end else
-      Header.Status := YAHOO_STATUS_WEBLOGIN;
+   // if (FBuddies.FindYID(ToUser, bud)) then begin
+   //   if (bud.State = ysOffline) then
+   //     Header.Status := YPACKET_STATUS_OFFLINE else
+   //     Header.Status := YPACKET_STATUS_DEFAULT;
+   // end else
+      Header.Status := YPACKET_STATUS_OFFLINE;
     Clear;
-    Add(0, FYID);
+    if (ToUser = FYID) then 
+      Add(0, FYID);
     Add(1, FYID);
     Add(5, ToUser);
-    Add(14, UTF8Encode(AMessage));
-    Add(97, '1');
+    Add(14, AMessage);
+    //Add(97, '1');
     Add(63, ';0');
     Add(64, '0');
+    Add(206,'0');
+    
   end;
   SendPacket(FPSend);
 
@@ -1052,13 +1055,15 @@ begin
   oldstatus := FStatus;
 
   if (CustomText <> '') then
-    FStatus := ysCustom;
+    FStatus := ysCustom
+  else
+    FStatus := AStatus;
 
   if (FStatus = ysInvisible) then
   begin
     with FPSend do begin
       Header.Service := YAHOO_SERVICE_Y6_VISIBLE_TOGGLE;
-      Header.Status := YAHOO_STATUS_AVAILABLE;
+      Header.Status := YPACKET_STATUS_DEFAULT;
       Clear;
       Add(13, '2');
     end;
@@ -1072,12 +1077,17 @@ begin
     Clear;
     Add(10, IntToStr(Integer(TYStatus(FStatus))));
 
-    if (FStatus = ysCustom) and (Length(CustomText)>0) then
-      Add(19, CustomText)
-    else
+    if (FStatus = ysCustom) then
+    begin
+      Add(19, CustomText);
+      Add(97, '1');
+      Add(47, '0'); // TODO: idle => yahoo_packet_hash(pkt, 47, (away == 2) ? "2" : (away) ? "1" : "0");
+      Add(187, '0');
+    end else
+    begin
       Add(19, '');
-
-    Add(47, '0'); // TODO: yahoo_packet_hash(pkt, 47, (away == 2) ? "2" : (away) ? "1" : "0");
+      Add(97, '1');
+    end;
   end;
 
   SendPacket(FPSend);
@@ -1085,7 +1095,7 @@ begin
   if oldstatus = ysInvisible then begin
     with FPSend do begin
       Header.Service := YAHOO_SERVICE_Y6_VISIBLE_TOGGLE;
-      Header.Status := YAHOO_STATUS_AVAILABLE;
+      Header.Status := YPACKET_STATUS_DEFAULT;
       Clear;
       Add(13, '1');
     end;
