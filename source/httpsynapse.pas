@@ -159,7 +159,7 @@ type
     procedure ThreadTerminated(Sender: TObject);
   public
     constructor Create;
-    destructor Destroy;override;     
+    destructor Destroy;override;    
     procedure HTTPGet(URL:string);
     procedure HTTPPost(URL:string;URLData:string); // not tested yet :)
     procedure HTTPAbort;

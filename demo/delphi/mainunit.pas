@@ -4,9 +4,16 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Controls, Forms, StdCtrls,
-  ComCtrls, ExtCtrls, Menus, YMsgCore, YBuddyList, YMsgConst;
+  ComCtrls, ExtCtrls, Menus, YMsgCore, YBuddyList, YMsgConst, libxmlparser;
 
 type
+  TElementNode=class
+    Content : string;
+    Attr    : TStringList;
+    constructor Create(TheContent: string; TheAttr: TNvpList);
+    destructor Destroy; override;
+  end;
+  
   TfrmMain = class(TForm)
     MainMenu1: TMainMenu;
     YMsgPas1: TMenuItem;
@@ -25,14 +32,17 @@ type
     Label2: TLabel;
     btnLogin: TButton;
     TreeBuddies: TTreeView;
-    Button1: TButton;
+    N2: TMenuItem;
+    ChatRooms1: TMenuItem;
+    TabSheet3: TTabSheet;
+    Memo1: TMemo;
     procedure Exit1Click(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure btnLoginClick(Sender: TObject);
     procedure TreeBuddiesDblClick(Sender: TObject);
+    procedure ChatRooms1Click(Sender: TObject);
   private
-    fLogin:Boolean;
     procedure OnError(Sender:TObject;Value:string);
     procedure OnStatus(Sender:TObject;Status:TYMsgCoreState);
     procedure OnBuddyList(Sender:TObject; Buddies:TYBuddyGroupList);
@@ -42,8 +52,18 @@ type
         BuddyID, MsgTxt: String; TimeStamp: TDateTime; MsgStatus:TYMessageStatus);
 
     procedure CreateFormChat(YID:string;ChatMessage:string);
+
+    // chat rooms
+    procedure ScanChatCategories(XMLParser: TXmlParser; ATree: TTreeview;
+      AParent: TTreeNode);
+    procedure ScanChatRooms(XMLParser: TXmlParser; ATree: TTreeview;
+      AParent: TTreeNode);    
+    procedure OnChatCategories(Sender: TObject; Value: string);
+    procedure OnChatRooms(Sender: TObject; Value: string);
+
   public
     ym:TYMSG;
+    fLogin:Boolean;
   end;
 
 var
@@ -51,9 +71,27 @@ var
 
 implementation
 
-uses uchat, uMsg, PageExtControl;
+uses uchat, uMsg, PageExtControl, urooms;
 
 {$R *.dfm}
+
+constructor TElementNode.Create(TheContent: string; TheAttr: TNvpList);
+var
+  i: integer;
+begin
+  inherited Create;
+  Content := TheContent;
+  Attr    := TStringList.Create;
+  if (TheAttr<>nil) then
+    for i:=0 to TheAttr.Count-1 do
+      Attr.Add (TNvpNode (TheAttr [I]).Name + '=' + TNvpNode (TheAttr [I]).Value);
+end;
+
+destructor TElementNode.Destroy;
+begin
+  Attr.Free;
+  inherited Destroy;
+end;
 
 procedure TfrmMain.Exit1Click(Sender: TObject);
 begin
@@ -72,10 +110,14 @@ begin
   ym.OnReceiveMessage := OnReceiveMessage;
   ym.OnBuddyList:= OnBuddyList;
 
+  ym.OnChatCategories := OnChatCategories;
+  ym.OnChatRooms := OnChatRooms;
+
   for i:=0 to PageControl1.PageCount-1 do
     PageControl1.Pages[i].TabVisible := False;
-    
+
   PageControl1.ActivePageIndex := 0;
+
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
@@ -123,7 +165,7 @@ begin
     ymError: s := 'Error sending message';
     ymOffline: s := 'Offline message';
   end;
-  CreateFormChat(BuddyID,'Status: '+ s + ', waktu: '+ DateTimeToStr(TimeStamp) + ' => ' + MsgTxt);
+  CreateFormChat(BuddyID,'Status: '+ s + ', TimeStamp: '+ DateTimeToStr(TimeStamp) + ' => ' + MsgTxt);
 end;
 
 procedure TfrmMain.OnStatus(Sender: TObject; Status: TYMsgCoreState);
@@ -163,7 +205,7 @@ begin
     Login1.Caption := '&Logout';
     ym.YahooID := edtYID.Text;
     ym.Password:= edtPWD.Text;
-    ym.Login(ysCustom, 'test status');
+    ym.Login(ysInvisible);
   end else
   begin
     ym.Logout;
@@ -241,4 +283,136 @@ begin
   CreateFormChat(node.Text,'');
 end;
 
+procedure TfrmMain.ScanChatCategories(XMLParser: TXmlParser;
+  ATree: TTreeview; AParent: TTreeNode);
+var
+  Node : TTreeNode;
+  EN   : TElementNode;
+begin
+  while XmlParser.Scan do begin
+    case XmlParser.CurPartType of
+      ptStartTag,
+      ptEmptyTag:
+        begin
+          if (XMLParser.CurName<>'content') and
+            (XMLParser.CurName<>'chatCategories') then
+          begin
+            Node := ATree.Items.AddChild(AParent, XMLParser.CurAttr.Value('name'));
+            if XmlParser.CurAttr.Count > 0 then
+            begin
+              EN := TElementNode.Create ('', XmlParser.CurAttr);
+              Node.Data := EN;
+            end;
+
+            if XmlParser.CurPartType = ptStartTag then   // Recursion
+              ScanChatCategories(XMLParser,ATree,Node);
+          end;
+        end;
+      ptEndTag: break;
+    end;
+  end;
+end;
+
+procedure TfrmMain.ScanChatRooms(XMLParser: TXmlParser; ATree: TTreeview;
+  AParent: TTreeNode);
+var
+  Node : TTreeNode;
+  S    : string;
+  EN   : TElementNode;
+begin
+  while XmlParser.Scan do begin
+    case XmlParser.CurPartType of
+      ptStartTag,
+      ptEmptyTag:
+        begin
+          if (XMLParser.CurName='room') then
+          begin
+            Node := ATree.Items.AddChild(AParent, XMLParser.CurAttr.Value('name'));
+            if XmlParser.CurAttr.Count > 0 then
+            begin
+              EN := TElementNode.Create ('', XmlParser.CurAttr);
+              Node.Data := EN;
+            end;
+
+            if XmlParser.CurPartType = ptStartTag then
+              ScanChatRooms(XMLParser,ATree,Node);
+          end else
+          if (XMLParser.CurName='lobby') then
+          begin
+            with XMLParser.CurAttr do begin
+              s := AParent.Text + ':' + Value('count');
+              s := s + ' Users:' + Value('users');
+              s := s + ' Voices:' + Value('voices');
+              s := s + ' Webcams:' + Value('webcams');
+            end;
+            Node := ATree.Items.AddChild(AParent, s);
+            if XmlParser.CurAttr.Count > 0 then
+            begin
+              EN := TElementNode.Create ('', XmlParser.CurAttr);
+              Node.Data := EN;
+            end;
+
+            if XmlParser.CurPartType = ptStartTag then
+              ScanChatRooms(XMLParser,ATree,Node);
+          end;
+        end;
+      ptEndTag: break;
+    end;
+  end;
+end;
+
+procedure TfrmMain.OnChatCategories(Sender: TObject; Value: string);
+var
+  parser:TXmlParser;
+begin
+  if (frmRooms.Visible=False) then
+    frmRooms.Visible := True
+  else
+    frmRooms.BringToFront;
+    
+  parser := TXmlParser.Create;
+  try
+    parser.LoadFromBuffer(PChar(Value));
+    frmRooms.TreeCat.Items.BeginUpdate;
+    frmRooms.TreeCat.Items.Clear;
+    parser.Normalize := False;
+    parser.StartScan;
+    ScanChatCategories(parser,frmRooms.TreeCat,nil);
+    frmRooms.TreeCat.Items.EndUpdate;
+  finally
+    parser.Free;
+  end;
+end;
+
+procedure TfrmMain.OnChatRooms(Sender: TObject; Value: string);
+var
+  parser:TXmlParser;
+begin
+  if (frmRooms.Visible=False) then
+    frmRooms.Visible := True
+  else
+    frmRooms.BringToFront;
+
+  parser := TXmlParser.Create;
+  try
+    parser.LoadFromBuffer(PChar(Value));
+    frmRooms.TreeRoom.Items.BeginUpdate;
+    frmRooms.TreeRoom.Items.Clear;
+    parser.Normalize := False;
+    parser.StartScan;
+    ScanChatRooms(parser,frmRooms.TreeRoom,nil);
+    frmRooms.TreeRoom.Items.EndUpdate;
+  finally
+    parser.Free;
+  end;
+end;
+
+procedure TfrmMain.ChatRooms1Click(Sender: TObject);
+begin
+  if not fLogin then
+    Exit;
+  ym.GetChatRooms;
+end;
+
 end.
+

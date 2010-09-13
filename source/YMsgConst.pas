@@ -32,7 +32,7 @@ const
   YAHOO_SERVICE_ADDIDENT = $10;
   YAHOO_SERVICE_ADDIGNORE = $11;
   YAHOO_SERVICE_PING = $12;
-  YAHOO_SERVICE_GROUPRENAME = $13;
+  YAHOO_SERVICE_GOTGROUPRENAME = $13;
   YAHOO_SERVICE_SYSMESSAGE = $14;
   YAHOO_SERVICE_PASSTHROUGH2 = $16;
   YAHOO_SERVICE_CONFINVITE = $18;
@@ -60,8 +60,16 @@ const
   YAHOO_SERVICE_REMBUDDY = $84;
   YAHOO_SERVICE_IGNORECONTACT = $85;
   YAHOO_SERVICE_REJECTCONTACT = $86;
-
-  YAHOO_SERVICE_GAME_INVITE = $b7;
+	YAHOO_SERVICE_GROUPRENAME = $89; // > 1, 65(new), 66(0), 67(old)
+	YAHOO_SERVICE_CHATONLINE = $96; // > 109(id), 1, 6(abcde) < 0,1
+	YAHOO_SERVICE_CHATGOTO = $97;
+	YAHOO_SERVICE_CHATJOIN = $98;	// > 1 104-room 129-1600326591 62-2
+	YAHOO_SERVICE_CHATLEAVE = $99;
+	YAHOO_SERVICE_CHATEXIT = $9b;
+	YAHOO_SERVICE_CHATLOGOUT = $a0;
+	YAHOO_SERVICE_CHATPING = $a1;
+	YAHOO_SERVICE_COMMENT = $a8;
+	YAHOO_SERVICE_STEALTH = $b9;
   YAHOO_SERVICE_PICTURE_CHECKSUM = $bd;
   YAHOO_SERVICE_PICTURE = $be;
   YAHOO_SERVICE_PICTURE_UPDATE = $c1;
@@ -107,8 +115,8 @@ const
 	YPACKET_STATUS_CONTINUED = $05;
 	YPACKET_STATUS_INVISIBLE = 12;
 	YPACKET_STATUS_NOTIFY = $16;	// TYPING
-	YPACKET_STATUS_WEBLOGIN = $5a55aa55;
-	YPACKET_STATUS_OFFLINE = $5a55aa56;
+//	YPACKET_STATUS_WEBLOGIN = $5a55aa55;
+//	YPACKET_STATUS_OFFLINE = $5a55aa56;
 
   YAHOO_STATUS_GAME = $02;
 
@@ -166,10 +174,21 @@ type
     SessionID: DWord;
   end;
 
-  TYMsgCoreState = (ymsConnecting, ymsVerify, ymsGetToken, ymsGetCrumb,
-    ymsLoggingIn, ymsAuthentication, ymsSignedIn, ymsSignedOut);
-  // TODO
-  TSocksType = (Ver4, Ver5);
+  TYMsgCoreState = (
+    ymsConnecting,
+    ymsVerify,
+    ymsGetToken,
+    ymsGetCrumb,
+    ymsLoggingIn,
+    ymsAuthentication,
+    ymsSignedIn,
+    ymsSignedOut,
+    ymsChatCategories,
+    ymsChatRooms
+  );
+
+  TSocksType = (Ver4, Ver5); // TODO
+
   TYStatus = (
     ysAvailable=YAHOO_STATUS_AVAILABLE,
     ysBeRightBack=YAHOO_STATUS_BRB,

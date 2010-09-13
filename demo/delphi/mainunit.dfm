@@ -110,14 +110,20 @@ object frmMain: TfrmMain
           OnDblClick = TreeBuddiesDblClick
         end
       end
-    end
-    object Button1: TButton
-      Left = 136
-      Top = 24
-      Width = 75
-      Height = 25
-      Caption = 'Button1'
-      TabOrder = 1
+      object TabSheet3: TTabSheet
+        Caption = 'TabSheet3'
+        ImageIndex = 2
+        object Memo1: TMemo
+          Left = 0
+          Top = 0
+          Width = 225
+          Height = 208
+          Align = alClient
+          Lines.Strings = (
+            'Memo1')
+          TabOrder = 0
+        end
+      end
     end
   end
   object MainMenu1: TMainMenu
@@ -128,6 +134,13 @@ object frmMain: TfrmMain
       object Login1: TMenuItem
         Caption = '&Login'
         OnClick = btnLoginClick
+      end
+      object N2: TMenuItem
+        Caption = '-'
+      end
+      object ChatRooms1: TMenuItem
+        Caption = '&Chat Rooms'
+        OnClick = ChatRooms1Click
       end
       object N1: TMenuItem
         Caption = '-'

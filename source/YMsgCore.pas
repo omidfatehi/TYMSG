@@ -18,7 +18,7 @@ interface
 
 uses
   SysUtils, Classes, ExtCtrls, httpsynapse,
-  YMsgSock, YMsgConst, YMsgPckt, YBuddyList;
+  YMsgSock, YMsgConst, YMsgPckt, YBuddyList, YChatList;
 
 type
   TYMSGStatusEvent = type TTCPEvent;
@@ -38,6 +38,10 @@ type
   TOnBuddyList = procedure(Sender: TObject; Buddies: TYBuddyGroupList) of object;
   TOnStatus = procedure(Sender: TObject; State: TYMsgCoreState) of object;
   TOnBuddyTyping = procedure(Sender: TObject; From: string; Stop: Boolean) of object;
+
+  TOnJoinedRoom = procedure(Sender:TObject; RoomName, RoomTopic: string; RoomMember:TYChatList) of object;
+  TOnUserLeaveRoom = procedure(Sender:TObject; RoomName, Who: string) of object;
+  TOnRoomMessage = procedure(Sender:TObject; Who, RoomName, AMessage:string; MsgType:integer) of object;
 
   TYMSG = class{$IFDEF KOMPONEN}(TComponent){$ENDIF}
   private
@@ -69,6 +73,13 @@ type
     FStatus: TYStatus;
     FInitialText:string;
 
+    FOnChatCat,
+    FOnChatRoom:TYMSGStatusEvent;
+    FChatters: TYChatList;
+    FOnJoinedRoom: TOnJoinedRoom;
+    FOnUserLeave: TOnUserLeaveRoom;
+    FOnRoomMsg: TOnRoomMessage;
+
     procedure SockError(Sender:TObject;Value:string);
     procedure SockConnected(Sender:TObject);
     procedure SockDisconnected(Sender:TObject);
@@ -76,6 +87,7 @@ type
 
     procedure HTTPError(Sender:TObject;ErrMsg:string;ErrorCode:integer);
     procedure HTTPContent(Sender:TObject;Header,Document:string;ResulCode:integer);
+    procedure HTTPBinaryData(Sender:TObject; BinaryData:TStream;ResultCode:integer);
 
     procedure DoError(ErrorMsg:string);
     procedure DoStatus(AState:TYMsgCoreState);
@@ -85,6 +97,7 @@ type
     procedure DoInitAuthentication(ADataPacket: TYMsgPacket);
     procedure DoInitLogin(ADataPacket: TYMsgPacket);
     procedure DoParseList(ADataPacket: TYMsgPacket);
+    procedure DoParseY8List(ADataPacket: TYMsgPacket);    
     procedure DoStatusY8(ADataPacket: TYMsgPacket);
     procedure DoLogOff(ADataPacket:TYMsgPacket);
     procedure DoReceiveMessage(ADataPacket:TYMsgPacket);
@@ -99,6 +112,10 @@ type
 
     procedure ProcessYMToken(Value:string);
     procedure ProcessYMCrumb(Header:string;Value:string);
+    procedure ProcessChatCat(Value:TStream);
+    procedure ProcessChatRoom(Value:TStream);
+    procedure DoProcessChat(ADataPacket: TYMsgPacket);
+
   public
     constructor Create{$IFDEF KOMPONEN}(AOwner: TComponent);override{$ENDIF};
     destructor Destroy;override;
@@ -116,6 +133,9 @@ type
     procedure SendBuzz(ToWho: string);
 
     procedure SendPacket(ADataPacket: TYMsgPacket);
+    procedure GetChatRooms(RoomID:integer=0); // result => xml
+    procedure JoinChatRoom(RoomName: string; RoomID: integer);    
+
 
   published
     property Host:string read FHost write FHost;
@@ -135,6 +155,13 @@ type
     property OnBuddyTyping: TOnBuddyTyping read FOnTyping write FOnTyping;
     property OnBuzz: TOnBuzz read FOnBuzz write FOnBuzz;
     property OnBuddyPicture: TOnBuddyPicture read FOnBuddyPicture write FOnBuddyPicture;
+
+    property OnChatCategories: TYMSGStatusEvent read FOnChatCat write FOnChatCat;
+    property OnChatRooms: TYMSGStatusEvent read FOnChatRoom write FOnChatRoom;
+    property OnJoinedRoom: TOnJoinedRoom read FOnJoinedRoom write FOnJoinedRoom;
+    property OnUserLeaveRoom: TOnUserLeaveRoom read FOnUserLeave write FOnUserLeave;
+    property OnRoomMessage: TOnRoomMessage read FOnRoomMsg write FOnRoomMsg;
+
   end;
 
 {$IFDEF KOMPONEN}
@@ -189,6 +216,7 @@ begin
   http := THTTPClient.Create;
   http.OnError := HTTPError;
   http.OnContent := HTTPContent;
+  http.OnBinaryData := HTTPBinaryData;
 
   FHost := 'scs.msg.yahoo.com';
   FPort := '5050';
@@ -205,6 +233,8 @@ begin
   FPing.OnTimer := DoPing;
   FPing.Interval := 100000;
 
+  FChatters := TYChatList.Create(TYChat);
+
 end;
 
 destructor TYMSG.Destroy;
@@ -216,7 +246,8 @@ begin
   sock.Free;
   FPSend.Free;
   FPRecv.Free;
-  FBuddies.Free;  
+  FBuddies.Free;
+  FChatters.Free;
   inherited Destroy;
 end;
 
@@ -379,8 +410,8 @@ begin
         YAHOO_SERVICE_VERIFY: DoInitAuthentication(DataPacket);
         YAHOO_SERVICE_AUTH: DoInitLogin(DataPacket);
         YAHOO_SERVICE_AUTHRESP: DoInitLogin(DataPacket);
-        YAHOO_SERVICE_LIST: ;// identities + cookies //DoStatus(ymsSignedIn);
-        YAHOO_SERVICE_Y8_LIST: DoParseList(DataPacket);
+        YAHOO_SERVICE_LIST: DoParseList(DataPacket);// identities + cookies
+        YAHOO_SERVICE_Y8_LIST: DoParseY8List(DataPacket);
         YAHOO_SERVICE_LOGON,YAHOO_SERVICE_Y8_STATUS: DoStatusY8(DataPacket);
         YAHOO_SERVICE_LOGOFF: DoLogOff(DataPacket);
         YAHOO_SERVICE_MESSAGE: DoReceiveMessage(DataPacket);
@@ -401,6 +432,15 @@ begin
         YAHOO_SERVICE_NOTIFY: DoProcessNotify(DataPacket);
 
         YAHOO_SERVICE_PICTURE: DoPicture(DataPacket);
+
+        YAHOO_SERVICE_CHATONLINE,
+        YAHOO_SERVICE_CHATGOTO,
+        YAHOO_SERVICE_CHATJOIN,
+        YAHOO_SERVICE_CHATLEAVE,
+        YAHOO_SERVICE_CHATEXIT,
+        YAHOO_SERVICE_CHATLOGOUT,
+        YAHOO_SERVICE_CHATPING,
+        YAHOO_SERVICE_COMMENT: DoProcessChat(DataPacket);
 
       end;
       if Assigned(OnDataPacketParsed) then
@@ -540,7 +580,10 @@ begin
       DoStatus(ymsLoggingIn);
       with FPSend do begin
         Header.Service := YAHOO_SERVICE_AUTHRESP;
-        Header.Status := YAHOO_STATUS_WEBLOGIN;
+        if (FStatus = ysInvisible) then
+          Header.Status := YAHOO_STATUS_INVISIBLE
+        else
+          Header.Status := YAHOO_STATUS_WEBLOGIN;
         Clear;
         Add(1,FYID);
         Add(0,FYID);
@@ -569,7 +612,7 @@ begin
     FOnStatus(Self,AState);
 end;
 
-procedure TYMSG.DoParseList(ADataPacket: TYMsgPacket);
+procedure TYMSG.DoParseY8List(ADataPacket: TYMsgPacket);
 var
   i,idx,j: Integer;
   grp,yid:string;
@@ -630,12 +673,6 @@ begin
 
   end;
 
-
-  if (FState <> ymsSignedIn) then begin
-    DoStatus(ymsSignedIn);
-    SetStatus(FStatus, FInitialText);
-  end;
-  
   if Assigned(OnBuddyList) then
     FOnBuddyList(Self,FBuddies);  
 
@@ -999,8 +1036,8 @@ begin
 end;
 
 procedure TYMSG.SendInstantMessage(ToUser, AMessage: String);
-var
-  bud: TYBuddy;
+//var
+//  bud: TYBuddy;
 begin
   if (FState<>ymsSignedIn) or (ToUser='') or (AMessage='') then
     Exit;
@@ -1012,7 +1049,7 @@ begin
    //     Header.Status := YPACKET_STATUS_OFFLINE else
    //     Header.Status := YPACKET_STATUS_DEFAULT;
    // end else
-      Header.Status := YPACKET_STATUS_OFFLINE;
+      Header.Status := YAHOO_STATUS_OFFLINE;
     Clear;
     if (ToUser = FYID) then 
       Add(0, FYID);
@@ -1141,20 +1178,20 @@ var
   stat: Boolean; 
 begin
   stat := false;
-  with ADataPacket do begin 
-    for i:=0 to DataCount-1 do begin 
-      k := Datas[i].Key; 
-      v := Datas[i].Value; 
-      case k of 
-        4: aFrom := v; 
-        5: aTo := v; 
-        49: aMsg := v; 
-        13: stat := StrToBoolDef(v,True); 
+  with ADataPacket do begin
+    for i:=0 to DataCount-1 do begin
+      k := Datas[i].Key;
+      v := Datas[i].Value;
+      case k of
+        4: aFrom := v;
+        5: aTo := v;
+        49: aMsg := v;
+        13: stat := StrToBoolDef(v,True);
         14: aInd := v; // TODO 
-        16: ; // TODO 
-      end; 
-    end; 
-  end; 
+        16: ; // TODO
+      end;
+    end;
+  end;
   
   // recheck 
   if (aMsg='') then Exit; 
@@ -1174,6 +1211,163 @@ end;
 procedure TYMSG.SendBuzz(ToWho: string);
 begin
   SendInstantMessage(ToWho, '<ding>');  
+end;
+
+procedure TYMSG.GetChatRooms(RoomID: integer);
+begin
+  if (RoomID=0) then begin
+    FState := ymsChatCategories;
+    http.HTTPGet('http://insider.msg.yahoo.com/ycontent/?chatcat=0');
+  end else
+  begin
+    FState := ymsChatRooms;
+    http.HTTPGet('http://insider.msg.yahoo.com/ycontent/?chatroom_'+IntToStr(RoomID)+'=0');
+  end;
+end;
+
+procedure TYMSG.ProcessChatCat(Value: TStream);
+begin
+  if Assigned(OnChatCategories) then
+    FOnChatCat(Self,ReadStrFromStream(Value,Value.Size));
+end;
+
+procedure TYMSG.ProcessChatRoom(Value: TStream);
+begin
+  if assigned(OnChatRooms) then
+    FOnChatRoom(Self,ReadStrFromStream(Value,Value.Size));
+end;
+
+procedure TYMSG.JoinChatRoom(RoomName: string; RoomID: integer);
+begin
+  if FState<>ymsSignedIn then
+    Exit;
+  with FPSend do begin
+    Header.Service := YAHOO_SERVICE_CHATONLINE;
+    Header.Status := YPACKET_STATUS_DEFAULT;
+    Clear;
+    Add(1, FYID);
+    Add(109, FYID);
+    Add(6, 'abcde');
+  end;
+  SendPacket(FPSend);
+
+  with FPSend do begin
+    Header.Service := YAHOO_SERVICE_CHATJOIN;
+    Header.Status := YPACKET_STATUS_DEFAULT;
+    Clear;
+    Add(1, FYID);
+    Add(104, RoomName);
+    Add(129, IntToStr(RoomID));
+    Add(62, '2');
+  end;
+  SendPacket(FPSend);
+end;
+
+procedure TYMSG.DoParseList(ADataPacket: TYMsgPacket);
+begin
+  // TODO: identities, cookies
+
+  if (FState <> ymsSignedIn) then begin
+    DoStatus(ymsSignedIn);
+    if (FStatus <> ysInvisible) then
+      SetStatus(FStatus, FInitialText);
+  end;
+end;
+
+procedure TYMSG.HTTPBinaryData(Sender: TObject; BinaryData: TStream;
+  ResultCode: integer);
+begin
+  case FState of
+    ymsChatCategories: ProcessChatCat(BinaryData);
+    ymsChatRooms: ProcessChatRoom(BinaryData);    
+  end;
+
+end;
+
+procedure TYMSG.DoProcessChat(ADataPacket: TYMsgPacket);
+var i, k, membercount,msgtype,
+    chaterr, firstjoin:integer;
+    v, id, who, room, topic, msg: string;
+    curmember: TYChat;
+begin
+  chaterr := -1;
+  with ADataPacket do begin
+    for i:=0 to DataCount-1 do begin
+      k := Datas[i].Key;
+      v := Datas[i].Value;
+      case k of
+        1: id := v; // my identity
+        104: room := v; // room name
+        105: topic := v; // room topic
+        108: membercount := StrToIntDef(v,0); // Number of members in this packet
+        109:
+          begin
+            who := v; // message sender
+            if (Header.Service = YAHOO_SERVICE_CHATJOIN) then
+            begin
+              // TODO
+              curmember := FChatters.Add(v);
+
+            end;
+          end;
+        110: if (Header.Service=YAHOO_SERVICE_CHATJOIN) then curmember.Age := StrToInt(v); // curmember age
+        113: if (Header.Service=YAHOO_SERVICE_CHATJOIN) then curmember.Attribs := StrToInt(v); // curmember attribs
+        141: if (Header.Service=YAHOO_SERVICE_CHATJOIN) then curmember.Alias := v; // curmember alias
+        142: if (Header.Service=YAHOO_SERVICE_CHATJOIN) then curmember.Location := v; // location
+        130: firstjoin := 1; // first join
+        117: msg := v;
+        124: msgtype := StrToInt(v);
+        114: chaterr := StrToInt(v); //-1 means no session in room
+      end; // case
+    end;
+
+    if (room = '') then begin
+      if (Header.Service = YAHOO_SERVICE_CHATLOGOUT) then // yahoo originated chat logout
+      begin
+        Logout;
+        Exit;
+      end else
+      if (Header.Service = YAHOO_SERVICE_COMMENT) and (chaterr = -1) then
+      begin
+        // yahoo error
+        Exit;
+      end;
+
+      // We didn't get a room name, ignoring packet
+      Exit;
+    end;
+
+
+    case Header.Service of
+      YAHOO_SERVICE_CHATJOIN:
+        begin
+          if (firstjoin = 1) then begin
+            if Assigned(OnJoinedRoom) then
+              FOnJoinedRoom(Self, room, topic, FChatters);
+          end else
+          if (who <> '') then
+          begin
+            // TODO
+          end;
+        end;
+      YAHOO_SERVICE_CHATEXIT:
+        begin
+          if Assigned(OnUserLeaveRoom) then
+            FOnUserLeave(Self, room, who)
+        end; 
+      YAHOO_SERVICE_COMMENT:
+        begin
+          if Assigned(OnRoomMessage) then
+            FOnRoomMsg(Self, who, room, msg, msgtype);
+        end;
+    end;
+
+
+
+
+  end; // with
+
+
 end;
 
 end.
