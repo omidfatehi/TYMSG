@@ -14,7 +14,7 @@ uses
   Sysutils, Classes, YMsgConst;
 
 type
-  TYChat = class(TCollectionItem)
+  TYChat = class(TPersistent)
   private
     FYID: string;
     FAge: integer;
@@ -29,140 +29,90 @@ type
     property Location: string read FLocation write FLocation;
   end;
 
-  TYChatList = class(TCollection)
+  TYChatList = class(TPersistent)
   private
-    FRName: String;
+    FList: TList;
     function GetItem(Idx: Integer): TYChat;
     procedure SetItem(Idx: Integer; Value: TYChat);
+    function GetCount:integer;
   public
-    property Items[Index: Integer]: TYChat read GetItem write SetItem;
-    property RoomName: string read FRName write FRName;
+    constructor Create;
+    destructor Destroy; override;
 
     function Add: TYChat; overload;
-    function Add(AYID: String): TYChat; overload;
-    function Insert(Idx: Integer): TYChat;
-    function FindYID(YahooID: String; var Rslt: TYChat): Boolean;
+    procedure Add(cYID, cAlias, cLocation : string; cAge, cAttribs: integer); overload;
+    function IndexOf(cYID: string): Integer;
+    procedure Clear;
+    procedure Delete(Idx: integer);
+    property Chatter[Index: Integer]: TYChat read GetItem write SetItem;
+    property ChatterCount: Integer read GetCount;
   end;
 
-{
-  TYChatRoom = class(TCollectionItem)
-  private
-    FRoomName: String;
-    FChatList: TYChatList;
-  public
-    property Chatters: TYChatList read FChatList write FChatList;
-    property RoomName: String read FRoomName;
-  end;  
-
-  TYChatRoomList = class(TCollection)
-  private
-    function GetItem(Idx: Integer): TYChatRoom;
-    procedure SetItem(Idx: Integer; Value: TYChatRoom);
-  public
-    property Rooms[Index: Integer]: TYChatRoom read GetItem write SetItem;
-
-    function Add(ARoomName: String): TYChatRoom;
-    function Insert(Idx: Integer): TYChatRoom;
-    function FindRoom(ARoomName: String): Integer;
-    function FindYID(YahooID: String; var Rslt: TYChat): Boolean;
-  end;
-}
 implementation
 
 { TYChatList }
 
 function TYChatList.Add: TYChat;
-begin
-  Result := TYChat(inherited Add);
-end;
-
-function TYChatList.Add(AYID: String): TYChat;
-begin
-  Result := Add;
-  with Result do begin
-    FYID := AYID;
-  end;
-end;
-
-function TYChatList.FindYID(YahooID: String; var Rslt: TYChat): Boolean;
 var
-  i: Integer;
+  idx: Integer;
 begin
-  Result := False;
-  for i := 0 to Count -1 do begin
-    if (LowerCase(Items[i].FYID) = LowerCase(YahooID)) then
-    begin
-      Rslt := Items[i];
-      Result := True;
-      Exit;
-    end;
+  idx := FList.Add( Pointer( TYChat.Create ));
+  Result := TYChat( FList[ idx ]);
+end;
+
+procedure TYChatList.Add(cYID, cAlias, cLocation : string; cAge, cAttribs: integer);
+begin
+  with Add do begin
+    YID := cYID;
+    Age := cAge;
+    Attribs := cAttribs;
+    Alias := cAlias;
+    Location := cLocation;
   end;
+end;
+
+procedure TYChatList.Clear;
+begin
+  FList.Clear;
+end;
+
+constructor TYChatList.Create;
+begin
+  inherited;
+  FList := TList.Create;
+end;
+
+procedure TYChatList.Delete(Idx: integer);
+begin
+  FList.Delete(Idx);
+end;
+
+destructor TYChatList.Destroy;
+begin
+  FList.Free;
+  inherited Destroy;
+end;
+
+function TYChatList.GetCount: integer;
+begin
+  Result := FList.Count;
 end;
 
 function TYChatList.GetItem(Idx: Integer): TYChat;
 begin
-  Result := TYChat(inherited Items[Idx]);
+  Result := TYChat(FList.Items[Idx]);
 end;
 
-function TYChatList.Insert(Idx: Integer): TYChat;
+function TYChatList.IndexOf(cYID: string): Integer;
 begin
-  Result := TYChat(inherited Insert(Idx));
+  for Result := 0 to ChatterCount -1 do
+    if Chatter[ Result ].YID = cYID then Exit;
+  Result := -1;
 end;
 
 procedure TYChatList.SetItem(Idx: Integer; Value: TYChat);
 begin
-  inherited Items[Idx] := Value;
+  FList[Idx] := Pointer(Value);
 end;
 
-{ TYChatRoomList }
-{
-function TYChatRoomList.Add(ARoomName: String): TYChatRoom;
-begin
-  Result := TYChatRoom(inherited Add);
-  with Result do begin
-    FChatList := TYChatList.Create(TYChat);
-    FChatList.FRName := ARoomName;
-    FRoomName := ARoomName;
-  end;
-end;
-
-function TYChatRoomList.FindRoom(ARoomName: String): Integer;
-begin
-  for Result := 0 to Count -1 do
-    if (Rooms[Result].FRoomName = ARoomName) then Exit;
-  Result := -1;
-end;
-
-function TYChatRoomList.FindYID(YahooID: String;
-  var Rslt: TYChat): Boolean;
-var
-  i,x: Integer;
-begin
-  Result := False;
-  for i := 0 to Count -1 do begin
-    for x := 0 to Rooms[i].Chatters.Count -1 do begin
-      if (LowerCase(Rooms[i].Chatters.Items[x].FYID) = LowerCase(YahooID)) then begin
-        Rslt := Rooms[i].Chatters.Items[x];
-        Result := True;
-        Exit;
-      end;
-    end;
-  end;
-end;
-
-function TYChatRoomList.GetItem(Idx: Integer): TYChatRoom;
-begin
-  Result := TYChatRoom(inherited Items[idx]);
-end;
-
-function TYChatRoomList.Insert(Idx: Integer): TYChatRoom;
-begin
-  Result := TYChatRoom(inherited Insert(Idx));
-end;
-
-procedure TYChatRoomList.SetItem(Idx: Integer; Value: TYChatRoom);
-begin
-  inherited Items[Idx] := Value;
-end;
-}
 end.

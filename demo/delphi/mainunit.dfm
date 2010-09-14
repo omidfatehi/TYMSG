@@ -119,8 +119,6 @@ object frmMain: TfrmMain
           Width = 225
           Height = 208
           Align = alClient
-          Lines.Strings = (
-            'Memo1')
           TabOrder = 0
         end
       end

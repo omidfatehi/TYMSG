@@ -28,7 +28,7 @@ var
 
 implementation
 
-uses mainunit;
+uses mainunit,dialogs;
 
 {$R *.dfm}
 
@@ -55,7 +55,8 @@ procedure TfrmRooms.TreeRoomDblClick(Sender: TObject);
 var
   node:TTreeNode;
   EN:TElementNode;
-  id,rn:string;
+  id,rn,lobby:string;
+  i:integer;
 begin
   if not frmMain.fLogin then
     Exit;
@@ -64,12 +65,19 @@ begin
   if (node=nil) or (node.Data=nil) or (node.HasChildren) then
     Exit;
 
-  EN := TElementNode(node.Data);
+  EN := TElementNode(node.Parent.Data);
   id := EN.Attr.Values['id'];
   rn := EN.Attr.Values['name'];
-  if (id='') then Exit;
-  frmMain.ym.JoinChatRoom(rn,StrToIntDef(id,1));
- 
+
+  lobby := TElementNode(node.Data).Attr.Values['count'];
+  
+  ShowMessage('RN: '+rn+':'+lobby+#13#10+'ID: '+id);
+
+  i := StrToIntDef(id,0);
+  
+  if (id='') or (i=0) or (rn='') or (lobby='') then Exit;
+  frmMain.ym.JoinChatRoom(rn+':'+lobby,i);
+  Close;
 end;
 
 end.

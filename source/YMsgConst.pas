@@ -10,6 +10,7 @@ unit YMsgConst;
 interface
 
 const
+  YMSG_VERSION = '9.0.0.2162';
   YAHOO_PROTOCOL_SIGN = 'YMSG';
   YAHOO_PROTO_VERSION = $10;
 

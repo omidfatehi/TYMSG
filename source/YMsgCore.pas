@@ -11,7 +11,7 @@ unit YMsgCore;
   {$MODE DELPHI}{$H+}
 {$ENDIF}
 
-// uncomment this line if you want vcl
+// uncomment this line if you want delphi vcl, never test :)
 //{$DEFINE KOMPONEN}
 
 interface
@@ -34,14 +34,22 @@ type
   TOnNewEmail = procedure(Sender: TObject; EmailCount: Integer) of object;
   TOnBuddyPicture = procedure(Sender: TObject; Buddy: TYBuddy;
       BuddyID, ImageUrl: String; ImageType: TYBImage) of object;
-  TOnDataPacketParsed = procedure(Sender: TObject; DataPacket: TYMsgPacket) of object;
+
+  TOnLogPacket = procedure(Sender: TObject; DataPacket: TYMsgPacket) of object;
+
   TOnBuddyList = procedure(Sender: TObject; Buddies: TYBuddyGroupList) of object;
   TOnStatus = procedure(Sender: TObject; State: TYMsgCoreState) of object;
   TOnBuddyTyping = procedure(Sender: TObject; From: string; Stop: Boolean) of object;
 
-  TOnJoinedRoom = procedure(Sender:TObject; RoomName, RoomTopic: string; RoomMember:TYChatList) of object;
-  TOnUserLeaveRoom = procedure(Sender:TObject; RoomName, Who: string) of object;
-  TOnRoomMessage = procedure(Sender:TObject; Who, RoomName, AMessage:string; MsgType:integer) of object;
+  TOnChatJoin = procedure(Sender: TObject; Room, Topic: string; Chatters:TYChatList) of object;
+
+  // Who => the user who has joined, Must be freed by the client ?
+  TOnChatUserJoin = procedure(Sender: TObject; Room, Topic: string; Who: TYChat) of object;
+
+  TOnChatUserLeave = procedure(Sender: TObject; Room, Who: string) of object;
+
+  //msgtype  - 1 = Normal message, 2 = /me type message
+  TOnChatMessage = procedure(Sender: TObject; Who, Room, AMessage: string; MsgType:integer) of object;
 
   TYMSG = class{$IFDEF KOMPONEN}(TComponent){$ENDIF}
   private
@@ -66,7 +74,7 @@ type
     FOnAddRequest: TOnAddRequest;
     FOnNewEmail: TOnNewEmail;
     FOnBuddyPicture: TOnBuddyPicture;
-    FOnDataPacketParsed: TOnDataPacketParsed;
+    FOnLogPacket: TOnLogPacket;
     FOnBuddyList: TOnBuddyList;
     FOnTyping: TOnBuddyTyping;
     FOnBuzz: TOnBuzz;
@@ -76,9 +84,11 @@ type
     FOnChatCat,
     FOnChatRoom:TYMSGStatusEvent;
     FChatters: TYChatList;
-    FOnJoinedRoom: TOnJoinedRoom;
-    FOnUserLeave: TOnUserLeaveRoom;
-    FOnRoomMsg: TOnRoomMessage;
+    FOnChatJoin: TOnChatJoin;
+    FOnChatUserLeave: TOnChatUserLeave;
+    FOnChatMessage: TOnChatMessage;
+    FOnChatUserJoin: TOnChatUserJoin;
+    FOnChatLogout: TNotifyEvent;
 
     procedure SockError(Sender:TObject;Value:string);
     procedure SockConnected(Sender:TObject);
@@ -97,7 +107,7 @@ type
     procedure DoInitAuthentication(ADataPacket: TYMsgPacket);
     procedure DoInitLogin(ADataPacket: TYMsgPacket);
     procedure DoParseList(ADataPacket: TYMsgPacket);
-    procedure DoParseY8List(ADataPacket: TYMsgPacket);    
+    procedure DoParseY8List(ADataPacket: TYMsgPacket);
     procedure DoStatusY8(ADataPacket: TYMsgPacket);
     procedure DoLogOff(ADataPacket:TYMsgPacket);
     procedure DoReceiveMessage(ADataPacket:TYMsgPacket);
@@ -134,7 +144,13 @@ type
 
     procedure SendPacket(ADataPacket: TYMsgPacket);
     procedure GetChatRooms(RoomID:integer=0); // result => xml
-    procedure JoinChatRoom(RoomName: string; RoomID: integer);    
+
+    // RoomName format => Room:Lobby
+    // ex. Indonesia:1
+    // TODO: scan chat rooms to get room id
+    procedure JoinChatRoom(RoomName: string; RoomID: integer);
+
+    procedure LeaveChatRoom;    
 
 
   published
@@ -150,7 +166,7 @@ type
     property OnReceiveMessage: TOnReceiveMessage read FOnReceiveMessage write FOnReceiveMessage;
     property OnAddRequest: TOnAddRequest read FOnAddRequest write FOnAddRequest;
     property OnNewEmail: TOnNewEmail read FOnNewEmail write FOnNewEmail;
-    property OnDataPacketParsed: TOnDataPacketParsed read FOnDataPacketParsed write FOnDataPacketParsed;
+    property OnLogPacket: TOnLogPacket read FOnLogPacket write FOnLogPacket;
     property OnBuddyList: TOnBuddyList read FOnBuddyList write FOnBuddyList;
     property OnBuddyTyping: TOnBuddyTyping read FOnTyping write FOnTyping;
     property OnBuzz: TOnBuzz read FOnBuzz write FOnBuzz;
@@ -158,9 +174,11 @@ type
 
     property OnChatCategories: TYMSGStatusEvent read FOnChatCat write FOnChatCat;
     property OnChatRooms: TYMSGStatusEvent read FOnChatRoom write FOnChatRoom;
-    property OnJoinedRoom: TOnJoinedRoom read FOnJoinedRoom write FOnJoinedRoom;
-    property OnUserLeaveRoom: TOnUserLeaveRoom read FOnUserLeave write FOnUserLeave;
-    property OnRoomMessage: TOnRoomMessage read FOnRoomMsg write FOnRoomMsg;
+    property OnChatJoin: TOnChatJoin read FOnChatJoin write FOnChatJoin;
+    property OnChatUserLeave: TOnChatUserLeave read FOnChatUserLeave write FOnChatUserLeave;
+    property OnChatMessage: TOnChatMessage read FOnChatMessage write FOnChatMessage;
+    property OnChatUserJoin: TOnChatUserJoin read FOnChatUserJoin write FOnChatUserJoin;
+    property OnChatLogout: TNotifyEvent read FOnChatLogout write FOnChatLogout;
 
   end;
 
@@ -233,7 +251,7 @@ begin
   FPing.OnTimer := DoPing;
   FPing.Interval := 100000;
 
-  FChatters := TYChatList.Create(TYChat);
+  FChatters := TYChatList.Create;
 
 end;
 
@@ -344,6 +362,8 @@ begin
   if (not sock.IsConnected) or
     (FState=ymsSignedOut) then
     Exit;
+
+  LeaveChatRoom;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_LOGOFF;
     Header.Status := YPACKET_STATUS_DEFAULT;
@@ -440,11 +460,12 @@ begin
         YAHOO_SERVICE_CHATEXIT,
         YAHOO_SERVICE_CHATLOGOUT,
         YAHOO_SERVICE_CHATPING,
-        YAHOO_SERVICE_COMMENT: DoProcessChat(DataPacket);
+        YAHOO_SERVICE_COMMENT:DoProcessChat(DataPacket);
+        //DoLogPacket(DataPacket);/;
 
       end;
-      if Assigned(OnDataPacketParsed) then
-        FOnDataPacketParsed(Self, DataPacket);
+      if Assigned(OnLogPacket) then
+        FOnLogPacket(Self, DataPacket);
     end;
   finally
     p.Free;
@@ -595,7 +616,7 @@ begin
         Add(2,'1');
         Add(59,FBCookie);
         Add(98,'us');
-        Add(135,'9.0.0.2162');
+        Add(135, YMSG_VERSION);
       end;
       SendPacket(FPSend);
       
@@ -1215,6 +1236,8 @@ end;
 
 procedure TYMSG.GetChatRooms(RoomID: integer);
 begin
+  if (FState = ymsSignedOut) then
+    Exit;
   if (RoomID=0) then begin
     FState := ymsChatCategories;
     http.HTTPGet('http://insider.msg.yahoo.com/ycontent/?chatcat=0');
@@ -1239,8 +1262,9 @@ end;
 
 procedure TYMSG.JoinChatRoom(RoomName: string; RoomID: integer);
 begin
-  if FState<>ymsSignedIn then
+  if FState = ymsSignedOut then
     Exit;
+  FChatters.Clear;
   with FPSend do begin
     Header.Service := YAHOO_SERVICE_CHATONLINE;
     Header.Status := YPACKET_STATUS_DEFAULT;
@@ -1248,6 +1272,9 @@ begin
     Add(1, FYID);
     Add(109, FYID);
     Add(6, 'abcde');
+    Add(98, 'us');
+    Add(445, 'en-us');
+    Add(135, YMSG_VERSION);
   end;
   SendPacket(FPSend);
 
@@ -1286,11 +1313,13 @@ end;
 
 procedure TYMSG.DoProcessChat(ADataPacket: TYMsgPacket);
 var i, k, membercount,msgtype,
-    chaterr, firstjoin:integer;
-    v, id, who, room, topic, msg: string;
+    chaterr, firstjoin, verify_image:integer;
+    v, id, who, room, topic, msg,
+    verify_url: string;
     curmember: TYChat;
 begin
   chaterr := -1;
+  verify_image := 1;
   with ADataPacket do begin
     for i:=0 to DataCount-1 do begin
       k := Datas[i].Key;
@@ -1305,9 +1334,8 @@ begin
             who := v; // message sender
             if (Header.Service = YAHOO_SERVICE_CHATJOIN) then
             begin
-              // TODO
-              curmember := FChatters.Add(v);
-
+              curmember := FChatters.Add;
+              curmember.YID := who;
             end;
           end;
         110: if (Header.Service=YAHOO_SERVICE_CHATJOIN) then curmember.Age := StrToInt(v); // curmember age
@@ -1324,12 +1352,14 @@ begin
     if (room = '') then begin
       if (Header.Service = YAHOO_SERVICE_CHATLOGOUT) then // yahoo originated chat logout
       begin
-        Logout;
+        FChatters.Clear;
+        if Assigned(OnChatLogout) then
+          FOnChatLogout(Self);
         Exit;
       end else
       if (Header.Service = YAHOO_SERVICE_COMMENT) and (chaterr = -1) then
       begin
-        // yahoo error
+        // TODO: yahoo error
         Exit;
       end;
 
@@ -1341,33 +1371,67 @@ begin
     case Header.Service of
       YAHOO_SERVICE_CHATJOIN:
         begin
-          if (firstjoin = 1) then begin
-            if Assigned(OnJoinedRoom) then
-              FOnJoinedRoom(Self, room, topic, FChatters);
-          end else
-          if (who <> '') then
+          if (FChatters.ChatterCount <> membercount) then begin
+            //TODO: Count of members doesn't match No. of members we got
+          end;          
+          if ( (firstjoin = 1) and (FChatters.ChatterCount>0) )then begin
+            if Assigned(OnChatJoin) then
+              FOnChatJoin(Self, room, topic, FChatters);
+          end else // firstjoin
           begin
-            // TODO
-          end;
+            if (who <> '') then begin
+               // TODO: display captcha image verification to client
+               {
+               if (verify_image = 1) then begin
+                  verify_image := 0;
+                  ...
+                  send captcha code
+                  ...
+                  Exit;
+               end;
+               }
+               for i:=0 to FChatters.ChatterCount-1 do
+               begin
+                  if Assigned(OnChatUserJoin) then
+                  begin
+                    FOnChatUserJoin(Self, room, topic, FChatters.Chatter[i]);
+                  end;
+               end;
+            end; // who
+          end; // firstjoin
         end;
       YAHOO_SERVICE_CHATEXIT:
         begin
-          if Assigned(OnUserLeaveRoom) then
-            FOnUserLeave(Self, room, who)
+          if Assigned(OnChatUserLeave) then
+            FOnChatUserLeave(Self, room, who)
         end; 
       YAHOO_SERVICE_COMMENT:
         begin
-          if Assigned(OnRoomMessage) then
-            FOnRoomMsg(Self, who, room, msg, msgtype);
+          if Assigned(OnChatMessage) then
+            FOnChatMessage(Self, who, room, msg, msgtype);
         end;
-    end;
 
-
+    end; // for
 
 
   end; // with
 
 
+end;
+
+procedure TYMSG.LeaveChatRoom;
+begin
+  if FState = ymsSignedOut then
+    Exit;
+
+  with FPSend do begin
+    Header.Service := YAHOO_SERVICE_CHATLOGOUT;
+    Header.Status := YPACKET_STATUS_DEFAULT;
+    Clear;
+    Add(1, FYID);
+    Add(1005, '12345678');
+  end;
+  SendPacket(FPSend);
 end;
 
 end.

@@ -4,7 +4,8 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Controls, Forms, StdCtrls,
-  ComCtrls, ExtCtrls, Menus, YMsgCore, YBuddyList, YMsgConst, libxmlparser;
+  ComCtrls, ExtCtrls, Menus, YMsgCore, YBuddyList, YMsgConst, libxmlparser,
+  YmsgPckt, YChatList;
 
 type
   TElementNode=class
@@ -53,13 +54,21 @@ type
 
     procedure CreateFormChat(YID:string;ChatMessage:string);
 
+    procedure OnLogPacket(Sender: TObject; DataPacket: TYMsgPacket);
+    
     // chat rooms
     procedure ScanChatCategories(XMLParser: TXmlParser; ATree: TTreeview;
       AParent: TTreeNode);
     procedure ScanChatRooms(XMLParser: TXmlParser; ATree: TTreeview;
       AParent: TTreeNode);    
-    procedure OnChatCategories(Sender: TObject; Value: string);
-    procedure OnChatRooms(Sender: TObject; Value: string);
+    procedure OnChatCategories(Sender: TObject; Value: string); // xml
+    procedure OnChatRooms(Sender: TObject; Value: string); // xml
+
+    procedure OnChatJoin(Sender: TObject;  Room, Topic: string; Chatters:TYChatList);
+    procedure OnChatMessage(Sender: TObject; Who, Room, AMessage:string; MsgType:integer);
+    procedure OnChatUserJoin(Sender: TObject; Room, Topic: string; Who: TYChat);
+    procedure OnChatUserLeave(Sender: TObject; Room, Who: string);
+    procedure OnChatLogout(Sender: TObject);
 
   public
     ym:TYMSG;
@@ -113,8 +122,16 @@ begin
   ym.OnChatCategories := OnChatCategories;
   ym.OnChatRooms := OnChatRooms;
 
-  for i:=0 to PageControl1.PageCount-1 do
-    PageControl1.Pages[i].TabVisible := False;
+  ym.OnChatJoin := OnChatJoin;
+  ym.OnChatUserJoin := OnChatUserJoin;
+  ym.OnChatMessage := OnChatMessage;
+  ym.OnChatUserLeave := OnChatUserLeave;
+  ym.OnChatLogout := OnChatLogout;
+
+//  ym.OnLogPacket := OnLogPacket;
+
+//  for i:=0 to PageControl1.PageCount-1 do
+//    PageControl1.Pages[i].TabVisible := False;
 
   PageControl1.ActivePageIndex := 0;
 
@@ -414,5 +431,54 @@ begin
   ym.GetChatRooms;
 end;
 
+procedure TfrmMain.OnChatJoin(Sender: TObject; Room, Topic: string;
+  Chatters: TYChatList);
+var i:integer;
+    s:string;
+begin
+  for i:=0 to Chatters.ChatterCount-1 do
+    s := s + ',' + Chatters.Chatter[i].YID;
+
+  Memo1.Lines.Add('JOINED ROOM: '+Room+' - '+Topic+ ' => ' +s);
+end;
+
+procedure TfrmMain.OnChatMessage(Sender: TObject; Who, Room, AMessage: string;
+  MsgType: integer);
+begin
+  Memo1.Lines.Add('RoomMessage: '+Room+' - '+Who+' => '+AMessage);
+end;
+
+procedure TfrmMain.OnChatUserJoin(Sender: TObject; Room, Topic: string; Who: TYChat);
+begin
+  Memo1.Lines.Add('Room: ' + Room + ' - ' + Topic + ' USER JOIN: '+ Who.YID);
+end;
+
+
+procedure TfrmMain.OnChatUserLeave(Sender: TObject; Room, Who: string);
+begin
+  Memo1.Lines.Add('USER LEAVE '+Room+ ':' +Who);
+end;
+
+procedure TfrmMain.OnChatLogout(Sender: TObject);
+begin
+  Memo1.Lines.Clear;
+end;
+
+procedure TfrmMain.OnLogPacket(Sender: TObject; DataPacket: TYMsgPacket);
+var i,k:integer;
+    v:string;
+begin
+  Memo1.Lines.Add(#13#10); // line feed
+  with DataPacket do begin
+    for i:=0 to DataCount-1 do begin
+      k := Datas[i].Key;
+      v := Datas[i].Value;
+      Memo1.Lines.Add(IntToStr(k) + '=>' + v);
+    end;
+  end;
+end;
+
+
 end.
+
 
