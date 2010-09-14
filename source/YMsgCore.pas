@@ -152,7 +152,9 @@ type
 
     procedure LeaveChatRoom;
 
-    procedure SendChatMessage(ToRoom: string; AMessage: string);   
+    // ToRoom format => Room:Lobby
+    // ex. Indonesia:1
+    procedure SendChatMessage(ToRoom: string; AMessage: string);
 
 
   published
@@ -1322,6 +1324,10 @@ var i, k, membercount,msgtype,
 begin
   chaterr := -1;
   verify_image := 1;
+  firstjoin := 0;
+  curmember := nil;
+  msgtype := 0;
+  membercount := 0;
   with ADataPacket do begin
     for i:=0 to DataCount-1 do begin
       k := Datas[i].Key;
@@ -1440,7 +1446,7 @@ end;
 
 procedure TYMSG.SendChatMessage(ToRoom, AMessage: string);
 begin
-  if (FState = ymsSignedOut) or (FState <> ymsChatJoined) then
+  if (FState <> ymsChatJoined) then
     Exit;
 
   with FPSend do begin
