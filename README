@@ -1,4 +1,6 @@
-It's a modified version from http://sourceforge.net/projects/tymsgcore/ 
+This is a modified version of http://sourceforge.net/projects/tymsgcore/ 
+
+Most of the code converted from libyahoo2
 
 Note:
 	- It's a development stage! fork it, hack it
