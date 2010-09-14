@@ -150,7 +150,9 @@ type
     // TODO: scan chat rooms to get room id
     procedure JoinChatRoom(RoomName: string; RoomID: integer);
 
-    procedure LeaveChatRoom;    
+    procedure LeaveChatRoom;
+
+    procedure SendChatMessage(ToRoom: string; AMessage: string);   
 
 
   published
@@ -1239,11 +1241,11 @@ begin
   if (FState = ymsSignedOut) then
     Exit;
   if (RoomID=0) then begin
-    FState := ymsChatCategories;
+    DoStatus(ymsChatCategories);
     http.HTTPGet('http://insider.msg.yahoo.com/ycontent/?chatcat=0');
   end else
   begin
-    FState := ymsChatRooms;
+    DoStatus(ymsChatRooms);
     http.HTTPGet('http://insider.msg.yahoo.com/ycontent/?chatroom_'+IntToStr(RoomID)+'=0');
   end;
 end;
@@ -1353,6 +1355,7 @@ begin
       if (Header.Service = YAHOO_SERVICE_CHATLOGOUT) then // yahoo originated chat logout
       begin
         FChatters.Clear;
+        DoStatus(ymsChatLeave);
         if Assigned(OnChatLogout) then
           FOnChatLogout(Self);
         Exit;
@@ -1375,6 +1378,7 @@ begin
             //TODO: Count of members doesn't match No. of members we got
           end;          
           if ( (firstjoin = 1) and (FChatters.ChatterCount>0) )then begin
+            DoStatus(ymsChatJoined);
             if Assigned(OnChatJoin) then
               FOnChatJoin(Self, room, topic, FChatters);
           end else // firstjoin
@@ -1430,6 +1434,23 @@ begin
     Clear;
     Add(1, FYID);
     Add(1005, '12345678');
+  end;
+  SendPacket(FPSend);
+end;
+
+procedure TYMSG.SendChatMessage(ToRoom, AMessage: string);
+begin
+  if (FState = ymsSignedOut) or (FState <> ymsChatJoined) then
+    Exit;
+
+  with FPSend do begin
+    Header.Service := YAHOO_SERVICE_COMMENT;
+    Header.Status := YPACKET_STATUS_DEFAULT;
+    Clear;
+    Add(1, FYID);
+    Add(104, ToRoom);
+    Add(117, AMessage);
+    Add(124, '1');
   end;
   SendPacket(FPSend);
 end;

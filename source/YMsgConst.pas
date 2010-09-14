@@ -185,7 +185,8 @@ type
     ymsSignedIn,
     ymsSignedOut,
     ymsChatCategories,
-    ymsChatRooms
+    ymsChatRooms,
+    ymsJoinedRoom
   );
 
   TSocksType = (Ver4, Ver5); // TODO
