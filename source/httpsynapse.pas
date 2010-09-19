@@ -4,11 +4,10 @@
 // Contacts: devi[dot]mandiri[at]gmail[dot]com
 
 {
-  saat menggunakan 'https' sering muncul pesan
-  'SSL/TLS support is not compiled!' di LastErrorDesc
-
-  sedikit modifikasi di unit httpsend.pas untuk menghindari pesan tersebut
-
+  when using 'https' often appears an error message 
+  'SSL/TLS support is not compiled!' in LastErrorDesc
+   
+  slight modifications in unit httpsend.pas to avoid the message:
   constructor THTTPSend.Create;
   begin
   inherited Create;
@@ -17,7 +16,7 @@
   ...
   ...
 
-  ganti dengan
+  change/replace with:
   FSock := TTCPBlockSocket.CreateWithSSL(TSSLOpenSSL);
 
 }
