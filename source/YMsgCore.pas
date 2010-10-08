@@ -835,7 +835,7 @@ begin
       if (Header.Status <= 2 ) or (Header.Status = 5) then
       begin
       // if we got the aGunk
-        if (aGunk <> '') then begin
+        //if (aGunk <> '') then begin
           with FPSend do begin
             Header.Service := YAHOO_SERVICE_MESSAGE_CONFIRM;
             Header.Status := YPACKET_STATUS_DEFAULT;
@@ -848,7 +848,7 @@ begin
             Add(450, '0');
           end;
           SendPacket(FPSend);
-        end;
+        //end;
 
         bud := nil;
         // if we got buzz
