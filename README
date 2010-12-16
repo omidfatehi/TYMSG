@@ -3,7 +3,7 @@ This is a modified version of http://sourceforge.net/projects/tymsgcore/
 Most of the code converted from http://sourceforge.net/projects/libyahoo2/
 
 Note:
-	- It's a development stage! fork it, hack it
+	- It's abandoned project, feel free to hack it
 	- SSL required !
 	- for Win32 users, grab openssl form http://www.slproweb.com/products/Win32OpenSSL.html
 	- I DON'T SUPPORT SPAMMER !!!
